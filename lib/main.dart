@@ -11,8 +11,9 @@ import 'profile.dart';
 import 'videos.dart';
 import 'video_manager.dart';
 import 'navigation_service.dart';
+import 'api_service.dart';
 
-// HTTP Override to fix network issues with better configuration
+// HTTP Override to fix Railway.app DNS issues
 class MyHttpOverrides extends HttpOverrides {
   @override
   HttpClient createHttpClient(SecurityContext? context) {
@@ -24,20 +25,36 @@ class MyHttpOverrides extends HttpOverrides {
       return host.contains('railway.app') || 
              host.contains('localhost') || 
              host.contains('127.0.0.1') ||
-             host.contains('chap2vid-production.up.railway.app');
+             host.contains('stboo-production.up.railway.app') ||
+             host.contains('imgboo-production.up.railway.app') ||
+             host.contains('bookey-pdf-production.up.railway.app');
     };
     
-    // Set connection timeout
-    client.connectionTimeout = Duration(seconds: 30);
-    
-    // Set idle timeout
-    client.idleTimeout = Duration(seconds: 30);
+    // Set longer timeouts for Railway
+    client.connectionTimeout = Duration(seconds: 60);
+    client.idleTimeout = Duration(seconds: 60);
     
     // Configure user agent
     client.userAgent = 'Bookey-Flutter-App/1.0 (Flutter)';
     
+    // Enable HTTP/2
+    client.autoUncompress = true;
+    
     return client;
   }
+  
+  @override
+  Future<InternetAddress> lookup(String host) async {
+  try {
+    // Use InternetAddress.lookup for DNS resolution
+    final addresses = await InternetAddress.lookup(host);
+    return addresses.first;
+  } catch (e) {
+    print('DNS lookup failed for $host: $e');
+    rethrow;
+  }
+}
+
 }
 
 void main() {
@@ -45,6 +62,9 @@ void main() {
   if (!kIsWeb) {
     HttpOverrides.global = MyHttpOverrides();
   }
+  
+  // Ensure Flutter bindings are initialized
+  WidgetsFlutterBinding.ensureInitialized();
   
   runApp(const BookeyApp());
 }
@@ -103,7 +123,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
     _pages = [
       HomePage(
-        onFileExtract: (file, webFile) => _navigateToProcessing(file, webFile),
+        onContentProcessed: (result) => _navigateToProcessing(result),
       ),
       ProcessingPage(key: _processingKey),
       const VideosPage(),
@@ -139,11 +159,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     }
   }
 
-  void _navigateToProcessing(File? file, PlatformFile? webFile) {
+  void _navigateToProcessing(ProcessingResult result) {
     setState(() {
       _currentIndex = 1;
     });
-    _processingKey.currentState?.processFile(file, webFile);
+    // Pass the processed content to the processing page
+    _processingKey.currentState?.loadProcessedContent(result);
   }
 
   void _navigateToTab(int index) {

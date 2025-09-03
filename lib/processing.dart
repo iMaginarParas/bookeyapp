@@ -56,6 +56,7 @@ class ProcessingPageState extends State<ProcessingPage>
       _processingStatus = 'Uploading PDF to server...';
     });
 
+
     try {
       // Show initial processing message
       ScaffoldMessenger.of(context).showSnackBar(
@@ -140,6 +141,27 @@ class ProcessingPageState extends State<ProcessingPage>
       );
     }
   }
+
+  void loadProcessedContent(ProcessingResult result) {
+  setState(() {
+    _pageBatches = result.pageBatches;
+    _lastResult = result;
+    _isProcessing = false;
+  });
+  
+  _slideController.forward();
+  
+  // Show success message
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+          'Content loaded successfully! ${result.totalPageBatches} page batches ready for video creation.'),
+      backgroundColor: const Color(0xFF10B981),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {
