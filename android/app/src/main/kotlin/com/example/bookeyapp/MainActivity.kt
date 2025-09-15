@@ -1,4 +1,4 @@
-package com.example.bookeyapp
+package com.sobookey.app
 
 import io.flutter.embedding.android.FlutterActivity
 

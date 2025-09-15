@@ -18,82 +18,47 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
-  final TextEditingController _storyController = TextEditingController();
   File? _selectedFile;
   PlatformFile? _selectedWebFile;
   bool _isProcessing = false;
   
   late AnimationController _fadeController;
+  late AnimationController _slideController;
   late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
   
-  int _wordCount = 0;
-  int _currentBannerIndex = 0;
-  int _selectedTabIndex = 0; // 0=AI Story, 1=Audio, 2=Images, 3=PDF, 4=Manual Text
-
-  final List<Map<String, dynamic>> _banners = [
-    {
-      'title': 'Create Amazing Videos',
-      'subtitle': 'Transform your content into cinematic experiences',
-      'gradient': [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-    },
-    {
-      'title': 'AI Story Generator',
-      'subtitle': 'Generate creative stories with artificial intelligence',
-      'gradient': [Color(0xFF10B981), Color(0xFF059669)],
-    },
-    {
-      'title': 'Audio to Video',
-      'subtitle': 'Convert audio books and recordings to engaging videos',
-      'gradient': [Color(0xFFEC4899), Color(0xFFEF4444)],
-    },
-    {
-      'title': 'Image Text Extraction',
-      'subtitle': 'Extract text from photos using advanced OCR technology',
-      'gradient': [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
-    },
-  ];
+  int _selectedTabIndex = 0; // 0=AI Story, 1=Audio, 2=Images, 3=PDF
 
   @override
   void initState() {
     super.initState();
     
     _fadeController = AnimationController(
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
+    _slideController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
       vsync: this,
     );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeOut),
+    );
+
+    _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
+      CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic),
     );
 
     _fadeController.forward();
-    _storyController.addListener(_updateWordCount);
-    
-    // Start banner rotation
-    Timer.periodic(const Duration(seconds: 4), (timer) {
-      if (mounted) {
-        setState(() {
-          _currentBannerIndex = (_currentBannerIndex + 1) % _banners.length;
-        });
-      }
-    });
-  }
-
-  void _updateWordCount() {
-    final text = _storyController.text;
-    final words = text.trim().isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
-    if (words != _wordCount) {
-      setState(() {
-        _wordCount = words;
-      });
-    }
+    _slideController.forward();
   }
 
   @override
   void dispose() {
-    _storyController.removeListener(_updateWordCount);
-    _storyController.dispose();
     _fadeController.dispose();
+    _slideController.dispose();
     super.dispose();
   }
 
@@ -117,16 +82,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           }
         });
         
-        _showSuccessSnackBar('PDF selected successfully!');
+        _showSnackBar('PDF selected successfully!', isError: false);
       }
     } catch (e) {
-      _showErrorSnackBar('Error selecting PDF: $e');
+      _showSnackBar('Error selecting PDF: $e', isError: true);
     }
   }
 
   Future<void> _processPdf() async {
     if (_selectedFile == null && _selectedWebFile == null) {
-      _showErrorSnackBar('Please select a PDF file first');
+      _showSnackBar('Please select a PDF file first', isError: true);
       return;
     }
 
@@ -135,17 +100,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     });
 
     try {
-      // Process PDF with AI cleaning by default
       final result = await ApiService.processPdfWithAI(_selectedFile, _selectedWebFile, maxConcurrent: 5);
       
       if (result.success) {
         widget.onContentProcessed(result);
-        _showSuccessSnackBar('PDF processed successfully! Check Processing tab');
+        _showSnackBar('PDF processed successfully! Check Processing tab', isError: false);
       } else {
         throw Exception(result.message);
       }
     } catch (e) {
-      _showErrorSnackBar('Failed to process PDF: ${e.toString()}');
+      _showSnackBar('Failed to process PDF: ${e.toString()}', isError: true);
     } finally {
       setState(() {
         _isProcessing = false;
@@ -153,177 +117,121 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> _processManualText() async {
-    if (_storyController.text.trim().isEmpty) {
-      _showErrorSnackBar('Please enter some text first');
-      return;
-    }
-
-    setState(() {
-      _isProcessing = true;
-    });
-
-    try {
-      // Create a manual ProcessingResult from the text input
-      final batch = PageBatchModel(
-        batchNumber: 1,
-        pageRange: "Manual Input",
-        cleanedText: _storyController.text.trim(),
-        wordCount: _wordCount,
-        cleaned: false,
-        pagesInBatch: 1,
-      );
-
-      final result = ProcessingResult(
-        success: true,
-        message: "Manual text input processed",
-        fileName: "Manual Text Input",
-        totalPageBatches: 1,
-        totalWords: _wordCount,
-        estimatedReadingTimeMinutes: _wordCount / 200.0,
-        pageBatches: [batch],
-        processingTimeSeconds: 1.0,
-      );
-
-      widget.onContentProcessed(result);
-      _showSuccessSnackBar('Text processed successfully! Check Processing tab');
-    } catch (e) {
-      _showErrorSnackBar('Failed to process text: ${e.toString()}');
-    } finally {
-      setState(() {
-        _isProcessing = false;
-      });
-    }
-  }
-
-  void _showSuccessSnackBar(String message) {
+  void _showSnackBar(String message, {required bool isError}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
-        backgroundColor: const Color(0xFF10B981),
+        content: Text(
+          message,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        backgroundColor: isError ? const Color(0xFFDC2626) : const Color(0xFF10B981),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        elevation: 6,
       ),
     );
   }
 
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: const Color(0xFFEF4444),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
-
-  // Handle results from input widgets
   void _handleContentProcessed(ProcessingResult result) {
     widget.onContentProcessed(result);
-    _showSuccessSnackBar('Content processed! Check Processing tab');
+    _showSnackBar('Content processed! Check Processing tab', isError: false);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0F),
+      backgroundColor: const Color(0xFFF9F7F4), // Cream background
       body: FadeTransition(
         opacity: _fadeAnimation,
-        child: CustomScrollView(
-          slivers: [
-            _buildModernAppBar(),
-            SliverPadding(
-              padding: const EdgeInsets.all(24),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  _buildBanner(),
-                  const SizedBox(height: 24),
-                  _buildMainContent(),
-                ]),
+        child: SlideTransition(
+          position: _slideAnimation,
+          child: CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              _buildAppBar(),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    _buildWelcomeSection(),
+                    const SizedBox(height: 20),
+                    _buildMainContent(),
+                    const SizedBox(height: 40),
+                  ]),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildModernAppBar() {
+  Widget _buildAppBar() {
     return SliverAppBar(
-      expandedHeight: 80,
+      expandedHeight: 100,
       floating: false,
       pinned: true,
-      backgroundColor: const Color(0xFF0A0A0F),
+      backgroundColor: Colors.white,
       elevation: 0,
+      shadowColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
       flexibleSpace: FlexibleSpaceBar(
         background: Container(
           decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF6366F1),
-                Color(0xFF8B5CF6),
-                Color(0xFFEC4899),
-              ],
-            ),
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  const Color(0xFF0A0A0F).withOpacity(0.8),
-                ],
-              ),
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              bottomLeft: Radius.circular(24),
+              bottomRight: Radius.circular(24),
             ),
           ),
         ),
         title: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(6),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                ),
-                borderRadius: BorderRadius.circular(10),
+                color: const Color(0xFF2D2D2D),
+                borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF6366F1).withOpacity(0.3),
-                    blurRadius: 8,
-                    spreadRadius: 1,
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
                   ),
                 ],
               ),
               child: const Icon(
                 Icons.auto_awesome,
                 color: Colors.white,
-                size: 20,
+                size: 18,
               ),
             ),
             const SizedBox(width: 10),
             const Text(
               'Bookey',
               style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
+                color: Color(0xFF2D2D2D),
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
               ),
             ),
             const Spacer(),
-            // Credits display
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
+                color: const Color(0xFFF5F3F0), // Beige
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: const Color(0xFFFFD700).withOpacity(0.3),
-                  width: 0.5,
+                  color: const Color(0xFFE8E3DD),
+                  width: 1,
                 ),
               ),
               child: const Row(
@@ -331,15 +239,15 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 children: [
                   Icon(
                     Icons.account_balance_wallet,
-                    color: Color(0xFFFFD700),
+                    color: Color(0xFF8B7355), // Brown tone
                     size: 14,
                   ),
                   SizedBox(width: 4),
                   Text(
                     '250',
                     style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
+                      color: Color(0xFF8B7355),
+                      fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -348,53 +256,72 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             ),
           ],
         ),
-        titlePadding: const EdgeInsets.only(left: 24, bottom: 12),
+        titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
       ),
     );
   }
 
-  Widget _buildBanner() {
-    final currentBanner = _banners[_currentBannerIndex];
-    
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeInOut,
-      width: double.infinity,
+  Widget _buildWelcomeSection() {
+    return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: currentBanner['gradient'],
+          colors: [
+            Color(0xFF2D2D2D),
+            Color(0xFF3D3D3D),
+          ],
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: currentBanner['gradient'][0].withOpacity(0.3),
-            blurRadius: 20,
-            spreadRadius: 2,
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            currentBanner['title'],
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.rocket_launch,
               color: Colors.white,
-              height: 1.2,
+              size: 22,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            currentBanner['subtitle'],
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.white.withOpacity(0.9),
-              height: 1.4,
+          const SizedBox(width: 16),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Transform Ideas',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    height: 1.1,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Turn your content into stunning videos',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w400,
+                    height: 1.3,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -405,37 +332,42 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   Widget _buildMainContent() {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A23),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: const Color(0xFF6366F1).withOpacity(0.2),
-          width: 1,
-        ),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF6366F1).withOpacity(0.1),
-            blurRadius: 32,
-            spreadRadius: 4,
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            const Text(
               'Content Input Methods',
               style: TextStyle(
                 fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Colors.white.withOpacity(0.9),
-                letterSpacing: 0.5,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF2D2D2D),
+                letterSpacing: -0.3,
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 4),
+            Text(
+              'Choose your preferred input method to get started',
+              style: TextStyle(
+                fontSize: 14,
+                color: const Color(0xFF8B7355),
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+            const SizedBox(height: 20),
             _buildTabSelector(),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             _buildTabContent(),
           ],
         ),
@@ -444,113 +376,91 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildTabSelector() {
-  return Container(
-    decoration: BoxDecoration(
-      color: const Color(0xFF2A2A3A),
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(
-        color: Colors.white.withOpacity(0.1),
-        width: 1,
-      ),
-    ),
-    child: SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    return Container(
       padding: const EdgeInsets.all(4),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildTabButton(
-            title: 'AI Story',
-            icon: Icons.auto_awesome,
-            isSelected: _selectedTabIndex == 0,
-            onTap: () => setState(() => _selectedTabIndex = 0),
-          ),
-          const SizedBox(width: 4),
-          _buildTabButton(
-            title: 'Audio',
-            icon: Icons.audiotrack,
-            isSelected: _selectedTabIndex == 1,
-            onTap: () => setState(() => _selectedTabIndex = 1),
-          ),
-          const SizedBox(width: 4),
-          _buildTabButton(
-            title: 'Images',
-            icon: Icons.photo_camera,
-            isSelected: _selectedTabIndex == 2,
-            onTap: () => setState(() => _selectedTabIndex = 2),
-          ),
-          const SizedBox(width: 4),
-          _buildTabButton(
-            title: 'PDF',
-            icon: Icons.picture_as_pdf,
-            isSelected: _selectedTabIndex == 3,
-            onTap: () => setState(() => _selectedTabIndex = 3),
-          ),
-          const SizedBox(width: 4),
-          _buildTabButton(
-            title: 'Text',
-            icon: Icons.edit,
-            isSelected: _selectedTabIndex == 4,
-            onTap: () => setState(() => _selectedTabIndex = 4),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-  Widget _buildTabButton({
-  required String title,
-  required IconData icon,
-  required bool isSelected,
-  required VoidCallback onTap,
-}) {
-  return InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(10),
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
       decoration: BoxDecoration(
-        gradient: isSelected 
-            ? const LinearGradient(
-                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-              )
-            : null,
-        color: isSelected ? null : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: isSelected
-            ? [
-                BoxShadow(
-                  color: const Color(0xFF6366F1).withOpacity(0.3),
-                  blurRadius: 8,
-                  spreadRadius: 1,
-                ),
-              ]
-            : null,
+        color: const Color(0xFFF5F3F0), // Beige background
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            color: Colors.white,
-            size: 18,
+          Expanded(
+            child: _buildTabButton(
+              title: 'AI Story',
+              icon: Icons.auto_awesome,
+              isSelected: _selectedTabIndex == 0,
+              onTap: () => setState(() => _selectedTabIndex = 0),
+            ),
           ),
-          const SizedBox(width: 6),
-          Text(
-            title,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+          const SizedBox(width: 3),
+          Expanded(
+            child: _buildTabButton(
+              title: 'Audio',
+              icon: Icons.audiotrack,
+              isSelected: _selectedTabIndex == 1,
+              onTap: () => setState(() => _selectedTabIndex = 1),
+            ),
+          ),
+          const SizedBox(width: 3),
+          Expanded(
+            child: _buildTabButton(
+              title: 'Images',
+              icon: Icons.photo_camera,
+              isSelected: _selectedTabIndex == 2,
+              onTap: () => setState(() => _selectedTabIndex = 2),
+            ),
+          ),
+          const SizedBox(width: 3),
+          Expanded(
+            child: _buildTabButton(
+              title: 'PDF',
+              icon: Icons.picture_as_pdf,
+              isSelected: _selectedTabIndex == 3,
+              onTap: () => setState(() => _selectedTabIndex = 3),
             ),
           ),
         ],
       ),
-    ),
-  );
-}
+    );
+  }
+
+  Widget _buildTabButton({
+    required String title,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF2D2D2D) : Colors.transparent,
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? Colors.white : const Color(0xFF8B7355),
+              size: 16,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              title,
+              style: TextStyle(
+                color: isSelected ? Colors.white : const Color(0xFF8B7355),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildTabContent() {
     switch (_selectedTabIndex) {
@@ -571,138 +481,114 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         );
       case 3: // PDF Upload
         return _buildPdfTab();
-      case 4: // Manual Text Input
-        return _buildManualTextTab();
       default:
-        return _buildManualTextTab();
+        return _buildPdfTab();
     }
   }
 
   Widget _buildPdfTab() {
+    final hasFile = _selectedFile != null || _selectedWebFile != null;
+    
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A23),
+        color: hasFile ? const Color(0xFFF0FDF4) : const Color(0xFFF5F3F0),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: (_selectedFile != null || _selectedWebFile != null)
-              ? const Color(0xFFEF4444).withOpacity(0.5)
-              : const Color(0xFF6366F1).withOpacity(0.2),
+          color: hasFile ? const Color(0xFF10B981).withOpacity(0.3) : const Color(0xFFE8E3DD),
           width: 1,
         ),
       ),
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
+            width: 60,
+            height: 60,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: (_selectedFile != null || _selectedWebFile != null)
-                    ? [const Color(0xFFEF4444), const Color(0xFFDC2626)]
-                    : [const Color(0xFF6366F1), const Color(0xFF8B5CF6)],
-              ),
-              borderRadius: BorderRadius.circular(12),
+              color: hasFile ? const Color(0xFF10B981) : const Color(0xFF8B7355),
+              borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: (_selectedFile != null || _selectedWebFile != null)
-                      ? const Color(0xFFEF4444).withOpacity(0.3)
-                      : const Color(0xFF6366F1).withOpacity(0.3),
-                  blurRadius: 12,
-                  spreadRadius: 2,
+                  color: (hasFile ? const Color(0xFF10B981) : const Color(0xFF8B7355)).withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
             child: Icon(
-              (_selectedFile != null || _selectedWebFile != null)
-                  ? Icons.check_circle
-                  : Icons.picture_as_pdf,
+              hasFile ? Icons.check_circle : Icons.picture_as_pdf,
               color: Colors.white,
-              size: 32,
+              size: 28,
             ),
           ),
           const SizedBox(height: 16),
           Text(
-            (_selectedFile != null || _selectedWebFile != null)
-                ? 'PDF File Selected!'
-                : 'Upload PDF Document',
+            hasFile ? 'PDF File Selected!' : 'Upload PDF Document',
             style: const TextStyle(
-              color: Colors.white,
+              color: Color(0xFF2D2D2D),
               fontSize: 18,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
-            (_selectedFile != null || _selectedWebFile != null)
+            hasFile 
                 ? 'Ready to process with AI text cleaning and enhancement'
                 : 'Upload PDF files for AI-powered text extraction and cleaning',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.6),
+            style: const TextStyle(
+              color: Color(0xFF8B7355),
               fontSize: 14,
+              fontWeight: FontWeight.w400,
+              height: 1.4,
             ),
           ),
           const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: (_selectedFile != null || _selectedWebFile != null) ? null : _pickPdfFile,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: Ink(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: (_selectedFile != null || _selectedWebFile != null)
-                        ? [const Color(0xFF10B981), const Color(0xFF059669)]
-                        : [const Color(0xFF6366F1), const Color(0xFF8B5CF6)],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  alignment: Alignment.center,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        (_selectedFile != null || _selectedWebFile != null)
-                            ? Icons.swap_horiz
-                            : Icons.upload_file,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        (_selectedFile != null || _selectedWebFile != null)
-                            ? 'Change PDF File'
-                            : 'Choose PDF File',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+          if (!hasFile)
+            _buildActionButton(
+              text: 'Choose PDF File',
+              icon: Icons.upload_file,
+              onPressed: _pickPdfFile,
+              isPrimary: true,
             ),
-          ),
-          if (_selectedFile != null || _selectedWebFile != null) ...[
+          if (hasFile) ...[
+            _buildSelectedFileCard(),
             const SizedBox(height: 16),
-            _buildSelectedPdfCard(),
-            const SizedBox(height: 16),
-            _buildProcessPdfButton(),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildActionButton(
+                    text: 'Change File',
+                    icon: Icons.swap_horiz,
+                    onPressed: () {
+                      setState(() {
+                        _selectedFile = null;
+                        _selectedWebFile = null;
+                      });
+                    },
+                    isPrimary: false,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: _buildActionButton(
+                    text: _isProcessing ? 'Processing...' : 'Process PDF',
+                    icon: _isProcessing ? null : Icons.auto_awesome,
+                    onPressed: _isProcessing ? null : _processPdf,
+                    isPrimary: true,
+                    isLoading: _isProcessing,
+                  ),
+                ),
+              ],
+            ),
           ],
         ],
       ),
     );
   }
 
-  Widget _buildSelectedPdfCard() {
+  Widget _buildSelectedFileCard() {
     final fileName = kIsWeb 
         ? (_selectedWebFile?.name ?? 'PDF Document')
         : (_selectedFile?.path.split('/').last ?? 'PDF Document');
@@ -710,19 +596,32 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFEF4444).withOpacity(0.1),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.3)),
+        border: Border.all(
+          color: const Color(0xFF10B981).withOpacity(0.2),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFFEF4444).withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
+              color: const Color(0xFF10B981).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.picture_as_pdf, color: Color(0xFFEF4444), size: 20),
+            child: const Icon(
+              Icons.picture_as_pdf, 
+              color: Color(0xFF10B981), 
+              size: 20,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -732,285 +631,90 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 Text(
                   fileName,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: Color(0xFF2D2D2D),
                     fontWeight: FontWeight.w600,
                     fontSize: 14,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 const Text(
-                  'AI text extraction and cleaning ready',
+                  'AI text extraction ready',
                   style: TextStyle(
-                    color: Color(0xFFEF4444),
+                    color: Color(0xFF10B981),
                     fontSize: 12,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
             ),
           ),
-          IconButton(
-            onPressed: () {
-              setState(() {
-                _selectedFile = null;
-                _selectedWebFile = null;
-              });
-            },
-            icon: const Icon(Icons.close, color: Colors.white70, size: 20),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildProcessPdfButton() {
-    return SizedBox(
-      width: double.infinity,
+  Widget _buildActionButton({
+    required String text,
+    IconData? icon,
+    required VoidCallback? onPressed,
+    required bool isPrimary,
+    bool isLoading = false,
+  }) {
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: isPrimary ? [
+          BoxShadow(
+            color: const Color(0xFF2D2D2D).withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ] : null,
+      ),
       child: ElevatedButton(
-        onPressed: _isProcessing ? null : _processPdf,
+        onPressed: onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
+          backgroundColor: isPrimary ? const Color(0xFF2D2D2D) : Colors.transparent,
+          foregroundColor: isPrimary ? Colors.white : const Color(0xFF8B7355),
+          disabledBackgroundColor: isPrimary ? const Color(0xFFF3F4F6) : Colors.transparent,
+          disabledForegroundColor: const Color(0xFF9CA3AF),
+          elevation: 0,
           shadowColor: Colors.transparent,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-        child: Ink(
-          decoration: BoxDecoration(
-            gradient: _isProcessing
-                ? LinearGradient(colors: [Colors.grey.shade600, Colors.grey.shade700])
-                : const LinearGradient(colors: [Color(0xFFEC4899), Color(0xFFEF4444)]),
+          side: isPrimary ? null : const BorderSide(
+            color: Color(0xFFE8E3DD),
+            width: 1,
+          ),
+          shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            alignment: Alignment.center,
-            child: _isProcessing
-                ? const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      Text(
-                        'Processing PDF...',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  )
-                : const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.auto_awesome, color: Colors.white, size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        'Process PDF with AI',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildManualTextTab() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A23),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: _storyController.text.isNotEmpty 
-              ? const Color(0xFF6366F1).withOpacity(0.5)
-              : const Color(0xFF6366F1).withOpacity(0.2),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                  ),
-                  borderRadius: BorderRadius.circular(10),
+        child: isLoading
+            ? const SizedBox(
+                height: 16,
+                width: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
-                child: const Icon(Icons.edit, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Manual Text Input',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              if (_wordCount > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF10B981), Color(0xFF059669)],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '$_wordCount words',
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: 16),
+                    const SizedBox(width: 6),
+                  ],
+                  Text(
+                    text,
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Container(
-            height: 200,
-            decoration: BoxDecoration(
-              color: const Color(0xFF2A2A3A),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _storyController.text.isNotEmpty 
-                    ? const Color(0xFF6366F1).withOpacity(0.5)
-                    : Colors.white.withOpacity(0.1),
-                width: 1,
-              ),
-            ),
-            child: TextField(
-              controller: _storyController,
-              maxLines: null,
-              expands: true,
-              textAlignVertical: TextAlignVertical.top,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                height: 1.4,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Enter your story, script, or any text content here...\n\nThis text will be processed and made ready for video generation.',
-                hintStyle: TextStyle(
-                  color: Colors.white.withOpacity(0.4),
-                  fontSize: 14,
-                ),
-                prefixIcon: const Icon(Icons.edit, color: Color(0xFF6366F1), size: 20),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.all(16),
-                filled: true,
-                fillColor: Colors.transparent,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () {
-                    _storyController.clear();
-                    setState(() {
-                      _wordCount = 0;
-                    });
-                  },
-                  child: const Text(
-                    'Clear Text',
-                    style: TextStyle(
-                      color: Colors.white60,
                       fontSize: 14,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton(
-                  onPressed: _isProcessing ? null : _processManualText,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: Ink(
-                    decoration: BoxDecoration(
-                      gradient: _isProcessing
-                          ? LinearGradient(colors: [Colors.grey.shade600, Colors.grey.shade700])
-                          : const LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)]),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      alignment: Alignment.center,
-                      child: _isProcessing
-                          ? const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                ),
-                                SizedBox(width: 12),
-                                Text(
-                                  'Processing...',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            )
-                          : const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.send, color: Colors.white, size: 20),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Process Text',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
