@@ -3,9 +3,11 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'dart:async';
 import 'api_service.dart';
 
-// Story Generator Widget
+// Story Generator Widget (unchanged - working correctly)
 class StoryGeneratorWidget extends StatefulWidget {
   final Function(ProcessingResult) onStoryGenerated;
 
@@ -74,7 +76,6 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
     _charactersController.addListener(_updateWordCount);
     _contextController.addListener(_updateWordCount);
 
-    // FIXED: Use the actual API values, not abbreviated ones
     _selectedGenre = 'Fantasy';
     _selectedDuration = 'Medium (10-20 minutes read)';
 
@@ -104,17 +105,16 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
     }
   }
 
-  // REPLACE THESE METHODS:
   String _getSafeGenreValue() {
     return _genres.any((genre) => genre['value'] == _selectedGenre)
         ? _selectedGenre
-        : 'Fantasy'; // Use actual API value
+        : 'Fantasy';
   }
 
   String _getSafeDurationValue() {
     return _durations.any((duration) => duration['value'] == _selectedDuration)
         ? _selectedDuration
-        : 'Medium (10-20 minutes read)'; // Use actual API value
+        : 'Medium (10-20 minutes read)';
   }
 
   Future<void> _loadGenresAndDurations() async {
@@ -254,15 +254,14 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
     return Row(
       children: [
         Container(
-          width: 36,
-          height: 36,
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: const Color(0xFF2D2D2D),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 6,
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
             ],
@@ -270,40 +269,33 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
           child: const Icon(
             Icons.auto_awesome,
             color: Colors.white,
-            size: 18,
+            size: 22,
           ),
         ),
         const SizedBox(width: 12),
         const Expanded(
-          child: Text(
-            'AI Story Generator',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF2D2D2D),
-              letterSpacing: -0.2,
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'AI Story Creator',
+                style: TextStyle(
+                  color: Color(0xFF2D2D2D),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                'Generate engaging stories with AI',
+                style: TextStyle(
+                  color: Color(0xFF8B7355),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
           ),
         ),
-        if (_wordCount > 0)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFF8B7355).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: const Color(0xFF8B7355).withOpacity(0.2),
-              ),
-            ),
-            child: Text(
-              '$_wordCount words',
-              style: const TextStyle(
-                color: Color(0xFF8B7355),
-                fontWeight: FontWeight.w600,
-                fontSize: 11,
-              ),
-            ),
-          ),
       ],
     );
   }
@@ -311,95 +303,73 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
   Widget _buildFormLayout() {
     return Column(
       children: [
+        _buildFormField(
+          controller: _titleController,
+          label: 'Story Title',
+          placeholder: 'Enter a compelling title...',
+          isRequired: true,
+        ),
+        const SizedBox(height: 16),
+        _buildFormField(
+          controller: _subjectController,
+          label: 'Main Subject/Plot',
+          placeholder: 'What is your story about...',
+          isRequired: true,
+          maxLines: 3,
+        ),
+        const SizedBox(height: 16),
         Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              flex: 3,
-              child: Column(
-                children: [
-                  _buildTextField(
-                    controller: _titleController,
-                    label: 'Story Title',
-                    hint: 'Enter a compelling title...',
-                    isRequired: true,
-                    maxLines: 1,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildTextField(
-                    controller: _subjectController,
-                    label: 'Plot & Theme',
-                    hint: 'Describe the main storyline and central themes...',
-                    isRequired: true,
-                    maxLines: 3,
-                  ),
-                ],
+              child: _buildDropdownField(
+                value: _selectedGenre,
+                label: 'Genre',
+                items: _genres,
+                onChanged: (value) {
+                  setState(() {
+                    _selectedGenre = value!;
+                  });
+                },
               ),
             ),
-            const SizedBox(width: 20),
+            const SizedBox(width: 12),
             Expanded(
-              flex: 2,
-              child: Column(
-                children: [
-                  _buildDropdownField(
-                    label: 'Genre',
-                    value: _getSafeGenreValue(),
-                    items: _genres,
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _selectedGenre = value);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  _buildDropdownField(
-                    label: 'Length',
-                    value: _getSafeDurationValue(),
-                    items: _durations,
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _selectedDuration = value);
-                      }
-                    },
-                  ),
-                ],
+              child: _buildDropdownField(
+                value: _selectedDuration,
+                label: 'Duration',
+                items: _durations,
+                onChanged: (value) {
+                  setState(() {
+                    _selectedDuration = value!;
+                  });
+                },
               ),
             ),
           ],
         ),
-        const SizedBox(height: 20),
-        Row(
-          children: [
-            Expanded(
-              child: _buildTextField(
-                controller: _charactersController,
-                label: 'Characters',
-                hint: 'Describe main characters (optional)...',
-                isRequired: false,
-                maxLines: 2,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _buildTextField(
-                controller: _contextController,
-                label: 'Setting',
-                hint: 'Time period, location, context (optional)...',
-                isRequired: false,
-                maxLines: 2,
-              ),
-            ),
-          ],
+        const SizedBox(height: 16),
+        _buildFormField(
+          controller: _charactersController,
+          label: 'Characters (Optional)',
+          placeholder: 'Describe main characters...',
+          maxLines: 2,
+        ),
+        const SizedBox(height: 16),
+        _buildFormField(
+          controller: _contextController,
+          label: 'Additional Context (Optional)',
+          placeholder: 'Any specific setting, themes, or details...',
+          maxLines: 2,
         ),
       ],
     );
   }
 
-  Widget _buildTextField({
+  Widget _buildFormField({
     required TextEditingController controller,
     required String label,
-    required String hint,
-    required bool isRequired,
+    required String placeholder,
+    bool isRequired = false,
     int maxLines = 1,
   }) {
     return Column(
@@ -411,79 +381,55 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
               label,
               style: const TextStyle(
                 color: Color(0xFF2D2D2D),
-                fontSize: 12,
+                fontSize: 14,
                 fontWeight: FontWeight.w600,
-                letterSpacing: 0.05,
               ),
             ),
-            if (isRequired) ...[
-              const SizedBox(width: 3),
+            if (isRequired)
               const Text(
-                '*',
+                ' *',
                 style: TextStyle(
                   color: Color(0xFFDC2626),
-                  fontSize: 12,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-            ],
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Container(
           decoration: BoxDecoration(
+            color: Colors.white,
             borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: const Color(0xFFE8E3DD),
+              width: 1,
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.02),
-                blurRadius: 3,
+                blurRadius: 4,
                 offset: const Offset(0, 1),
               ),
             ],
           ),
-          child: TextField(
+          child: TextFormField(
             controller: controller,
             maxLines: maxLines,
             style: const TextStyle(
               color: Color(0xFF2D2D2D),
               fontSize: 14,
-              fontWeight: FontWeight.w400,
-              height: 1.4,
+              fontWeight: FontWeight.w500,
             ),
             decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: const TextStyle(
-                color: Color(0xFF9CA3AF),
+              hintText: placeholder,
+              hintStyle: TextStyle(
+                color: const Color(0xFF8B7355).withOpacity(0.6),
                 fontSize: 14,
                 fontWeight: FontWeight.w400,
               ),
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(
-                  color: Color(0xFFE8E3DD),
-                  width: 1,
-                ),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(
-                  color: Color(0xFFE8E3DD),
-                  width: 1,
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(
-                  color: Color(0xFF2D2D2D),
-                  width: 1.5,
-                ),
-              ),
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: maxLines > 1 ? 14 : 12,
-              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.all(12),
             ),
           ),
         ),
@@ -492,10 +438,10 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
   }
 
   Widget _buildDropdownField({
-    required String label,
     required String value,
+    required String label,
     required List<Map<String, String>> items,
-    required Function(String?) onChanged,
+    required void Function(String?) onChanged,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -504,62 +450,39 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
           label,
           style: const TextStyle(
             color: Color(0xFF2D2D2D),
-            fontSize: 12,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
-            letterSpacing: 0.05,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Container(
           decoration: BoxDecoration(
+            color: Colors.white,
             borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: const Color(0xFFE8E3DD),
+              width: 1,
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.02),
-                blurRadius: 3,
+                blurRadius: 4,
                 offset: const Offset(0, 1),
               ),
             ],
           ),
           child: DropdownButtonFormField<String>(
             value: value,
-            dropdownColor: Colors.white,
-            elevation: 6,
-            isExpanded: true, // This prevents text cutoff
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
             style: const TextStyle(
               color: Color(0xFF2D2D2D),
-              fontSize: 13, // Slightly smaller to fit better
-              fontWeight: FontWeight.w400,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
             ),
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(
-                  color: Color(0xFFE8E3DD),
-                  width: 1,
-                ),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(
-                  color: Color(0xFFE8E3DD),
-                  width: 1,
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(
-                  color: Color(0xFF2D2D2D),
-                  width: 1.5,
-                ),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12, // Slightly less padding
-                vertical: 12,
-              ),
-            ),
+            dropdownColor: Colors.white,
             items: items.map((item) {
               return DropdownMenuItem<String>(
                 value: item['value'],
@@ -567,20 +490,12 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
                   item['label']!,
                   style: const TextStyle(
                     color: Color(0xFF2D2D2D),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w400,
+                    fontSize: 14,
                   ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
                 ),
               );
             }).toList(),
             onChanged: onChanged,
-            icon: const Icon(
-              Icons.expand_more,
-              color: Color(0xFF8B7355),
-              size: 18,
-            ),
           ),
         ),
       ],
@@ -588,91 +503,74 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
   }
 
   Widget _buildGenerateSection() {
-    return Row(
+    return Column(
       children: [
-        if (!_isGenerating)
-          Expanded(
-            child: TextButton(
-              onPressed: _clearForm,
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF8B7355),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              child: const Text(
-                'Clear Form',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
+        if (_wordCount > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF8B7355).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              '$_wordCount words provided',
+              style: const TextStyle(
+                color: Color(0xFF8B7355),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
-        if (!_isGenerating) const SizedBox(width: 12),
-        Expanded(
-          flex: _isGenerating ? 1 : 2,
-          child: Container(
-            height: 44,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF2D2D2D).withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: ElevatedButton(
-              onPressed: _isGenerating ? null : _generateStory,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2D2D2D),
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: const Color(0xFFF3F4F6),
-                disabledForegroundColor: const Color(0xFF9CA3AF),
-                elevation: 0,
-                shadowColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+        const SizedBox(height: 16),
+        Container(
+          width: double.infinity,
+          height: 48,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF2D2D2D).withOpacity(0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
-              child: _isGenerating
-                  ? const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'Generating...',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    )
-                  : const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.auto_awesome, size: 16),
-                        SizedBox(width: 6),
-                        Text(
-                          'Generate Story',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
+            ],
+          ),
+          child: ElevatedButton(
+            onPressed: _canGenerateStory() && !_isGenerating ? _generateStory : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2D2D2D),
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: const Color(0xFFF3F4F6),
+              disabledForegroundColor: const Color(0xFF9CA3AF),
+              elevation: 0,
+              shadowColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
+            child: _isGenerating
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.auto_awesome, size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        'Generate Story',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         ),
       ],
@@ -680,7 +578,7 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
   }
 }
 
-// Audio Upload Widget
+// FIXED AUDIO UPLOAD WIDGET - Prevents duplicate requests and properly handles polling
 class AudioUploadWidget extends StatefulWidget {
   final Function(ProcessingResult) onAudioProcessed;
 
@@ -692,154 +590,443 @@ class AudioUploadWidget extends StatefulWidget {
 
 class _AudioUploadWidgetState extends State<AudioUploadWidget>
     with TickerProviderStateMixin {
-  File? _selectedAudioFile;
-  PlatformFile? _selectedWebAudioFile;
+  File? _selectedFile;
+  PlatformFile? _selectedWebFile;
   bool _isProcessing = false;
-
-  late AnimationController _breathingController;
-  late Animation<double> _breathingAnimation;
+  bool _isPickingFile = false;
+  Timer? _jobPollingTimer;
+  String? _currentJobId;
+  String _processingStatus = '';
+  bool _requestInProgress = false; // Prevent duplicate requests
+  
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
-    _breathingController = AnimationController(
-      duration: const Duration(seconds: 2),
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 500),
       vsync: this,
     );
-    _breathingAnimation = Tween<double>(begin: 0.98, end: 1.02).animate(
-      CurvedAnimation(parent: _breathingController, curve: Curves.easeInOut),
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeOut),
     );
-    _breathingController.repeat(reverse: true);
+    _fadeController.forward();
   }
 
   @override
   void dispose() {
-    _breathingController.dispose();
+    _jobPollingTimer?.cancel();
+    _fadeController.dispose();
     super.dispose();
   }
 
   Future<void> _pickAudioFile() async {
+    if (_isPickingFile) {
+      print('Audio file picker already in progress, ignoring request');
+      return;
+    }
+
+    setState(() {
+      _isPickingFile = true;
+    });
+
     try {
+      await Future.delayed(const Duration(milliseconds: 200)); // Longer delay to prevent rapid calls
+      
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.audio,
         allowMultiple: false,
         withData: kIsWeb,
       );
 
-      if (result != null) {
+      if (result != null && result.files.isNotEmpty) {
         setState(() {
           if (kIsWeb) {
-            _selectedWebAudioFile = result.files.single;
-            _selectedAudioFile = null;
+            _selectedWebFile = result.files.single;
+            _selectedFile = null;
           } else {
-            _selectedAudioFile = File(result.files.single.path!);
-            _selectedWebAudioFile = null;
+            _selectedFile = File(result.files.single.path!);
+            _selectedWebFile = null;
           }
         });
 
-        _showSnackBar('Audio file selected successfully', isError: false);
+        _showSnackBar('Audio file selected successfully!', isError: false);
       }
     } catch (e) {
-      _showSnackBar('Selection failed: $e', isError: true);
-    }
-  }
-
-  Future<void> _processAudio() async {
-    if (_selectedAudioFile == null && _selectedWebAudioFile == null) {
-      _showSnackBar('Please select an audio file', isError: true);
-      return;
-    }
-
-    setState(() {
-      _isProcessing = true;
-    });
-
-    try {
-      final isHealthy = await ApiService.checkMediaApiHealth();
-      if (!isHealthy) {
-        throw Exception('Audio service temporarily unavailable');
+      print('Error selecting audio file: $e');
+      if (!e.toString().contains('multiple_request') && !e.toString().contains('User cancelled')) {
+        _showSnackBar('Error selecting audio file: $e', isError: true);
       }
-
-      final result = await ApiService.processAudio(
-        _selectedAudioFile,
-        _selectedWebAudioFile,
-        maxConcurrent: 3,
-      );
-
-      if (result?.success == true) {
-        widget.onAudioProcessed(result!);
-        _showSnackBar('Audio processed successfully', isError: false);
-        setState(() {
-          _selectedAudioFile = null;
-          _selectedWebAudioFile = null;
-        });
-      } else {
-        throw Exception(result?.message ?? 'Processing failed');
-      }
-    } catch (e) {
-      String errorMessage = e.toString();
-      if (errorMessage.contains('timeout')) {
-        errorMessage =
-            'Processing timeout - please try again with a smaller file';
-      } else if (errorMessage.contains('Connection')) {
-        errorMessage = 'Connection error - check your network';
-      }
-      _showSnackBar(errorMessage, isError: true);
     } finally {
       setState(() {
-        _isProcessing = false;
+        _isPickingFile = false;
       });
     }
   }
 
-  void _showSnackBar(String message, {required bool isError}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        backgroundColor:
-            isError ? const Color(0xFFDC2626) : const Color(0xFF10B981),
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        elevation: 6,
-      ),
+  Future<void> _processAudio() async {
+    if (_selectedFile == null && _selectedWebFile == null) {
+      _showSnackBar('Please select an audio file first', isError: true);
+      return;
+    }
+
+    // Prevent duplicate requests
+    if (_requestInProgress) {
+      print('Audio processing request already in progress, ignoring');
+      return;
+    }
+
+    setState(() {
+      _requestInProgress = true;
+      _isProcessing = true;
+      _processingStatus = 'Starting audio processing...';
+    });
+
+    try {
+      // Start background job using your actual backend
+      final jobInfo = await BackgroundJobApiService.processAudio(
+        _selectedFile, 
+        _selectedWebFile,
+      );
+
+      if (jobInfo != null && jobInfo['success'] == true) {
+        _currentJobId = jobInfo['job_id'];
+        setState(() {
+          _processingStatus = 'Processing started - monitoring progress...';
+        });
+        
+        _showSnackBar('Audio processing started! Monitoring progress...', isError: false);
+        
+        // Start polling for job status
+        _startJobPolling();
+      } else {
+        throw Exception(jobInfo?['message'] ?? 'Failed to start audio processing');
+      }
+    } catch (e) {
+      _showSnackBar('Failed to start audio processing: ${e.toString()}', isError: true);
+      setState(() {
+        _isProcessing = false;
+        _processingStatus = '';
+        _requestInProgress = false;
+      });
+    }
+  }
+
+  void _startJobPolling() {
+    if (_currentJobId == null) return;
+    
+    print('Starting job polling for job ID: $_currentJobId');
+    
+    _jobPollingTimer = Timer.periodic(Duration(seconds: 5), (timer) async {
+      try {
+        print('Polling job status for: $_currentJobId');
+        final status = await BackgroundJobApiService.getJobStatus(_currentJobId!);
+        
+        if (status != null) {
+          print('Job status received: ${status['status']}');
+          setState(() {
+            _processingStatus = _getStatusMessage(status);
+          });
+          
+          if (status['status'] == 'completed') {
+            timer.cancel();
+            await _handleJobCompletion(status);
+          } else if (status['status'] == 'failed') {
+            timer.cancel();
+            _handleJobFailure(status);
+          }
+        } else {
+          print('No status received for job: $_currentJobId');
+        }
+      } catch (e) {
+        print('Error polling job status: $e');
+        // Don't cancel timer on error, keep trying
+      }
+    });
+  }
+
+  String _getStatusMessage(Map<String, dynamic> status) {
+    switch (status['status']) {
+      case 'pending':
+        return 'Audio processing queued...';
+      case 'processing':
+        return 'Transcribing audio with AssemblyAI...';
+      case 'completed':
+        return 'Audio processing completed!';
+      case 'failed':
+        return 'Audio processing failed';
+      default:
+        return 'Processing audio...';
+    }
+  }
+
+  Future<void> _handleJobCompletion(Map<String, dynamic> status) async {
+    try {
+      print('Job completed! Status: $status');
+      final result = status['result'];
+      if (result != null) {
+        // Convert to ProcessingResult format
+        final processingResult = _convertJobResultToProcessingResult(result);
+        
+        widget.onAudioProcessed(processingResult);
+        _showSnackBar('Audio processed successfully! Check Processing tab', isError: false);
+        
+        // Clear the selected file after successful processing
+        setState(() {
+          _selectedFile = null;
+          _selectedWebFile = null;
+          _isProcessing = false;
+          _processingStatus = '';
+          _currentJobId = null;
+          _requestInProgress = false;
+        });
+      } else {
+        // Try to get results from session_id
+        final sessionId = status['session_id'];
+        if (sessionId != null) {
+          final results = await BackgroundJobApiService.getResults(sessionId);
+          if (results != null) {
+            final processingResult = _convertJobResultToProcessingResult(results);
+            widget.onAudioProcessed(processingResult);
+            _showSnackBar('Audio processed successfully! Check Processing tab', isError: false);
+            
+            setState(() {
+              _selectedFile = null;
+              _selectedWebFile = null;
+              _isProcessing = false;
+              _processingStatus = '';
+              _currentJobId = null;
+              _requestInProgress = false;
+            });
+          } else {
+            throw Exception('No results found for completed job');
+          }
+        } else {
+          throw Exception('Job completed but no results available');
+        }
+      }
+    } catch (e) {
+      print('Error handling job completion: $e');
+      _handleJobFailure({'error_message': e.toString()});
+    }
+  }
+
+  void _handleJobFailure(Map<String, dynamic> status) {
+    final errorMessage = status['error_message'] ?? 'Unknown error occurred';
+    _showSnackBar('Audio processing failed: $errorMessage', isError: true);
+    
+    setState(() {
+      _isProcessing = false;
+      _processingStatus = '';
+      _currentJobId = null;
+      _requestInProgress = false;
+    });
+  }
+
+  ProcessingResult _convertJobResultToProcessingResult(Map<String, dynamic> result) {
+    List<PageBatchModel> pageBatches = [];
+    
+    if (result['parts'] != null) {
+      for (var part in result['parts']) {
+        pageBatches.add(PageBatchModel(
+          batchNumber: part['part_number'] ?? 1,
+          pageRange: "Part ${part['part_number'] ?? 1}",
+          cleanedText: part['cleaned_text'] ?? part['text'] ?? '',
+          wordCount: part['word_count'] ?? 0,
+          cleaned: part['cleaned'] ?? false,
+          pagesInBatch: 1,
+        ));
+      }
+    }
+
+    return ProcessingResult(
+      success: result['success'] ?? true,
+      message: result['message'] ?? 'Audio processing completed',
+      fileName: result['file_name'] ?? 'Audio Transcription',
+      totalPageBatches: result['total_items'] ?? pageBatches.length,
+      totalWords: result['total_words'] ?? 0,
+      estimatedReadingTimeMinutes: result['estimated_reading_time_minutes'] ?? 0.0,
+      pageBatches: pageBatches,
+      processingTimeSeconds: result['processing_time_seconds'] ?? 0.0,
     );
+  }
+
+  void _showSnackBar(String message, {required bool isError}) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            message,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          backgroundColor:
+              isError ? const Color(0xFFDC2626) : const Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 6,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final hasFile = _selectedAudioFile != null || _selectedWebAudioFile != null;
+    final hasFile = _selectedFile != null || _selectedWebFile != null;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F3F0), // Beige background
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: const Color(0xFFE8E3DD),
-          width: 1,
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: hasFile ? const Color(0xFFF0FDF4) : const Color(0xFFF5F3F0),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: hasFile
+                ? const Color(0xFF10B981).withOpacity(0.3)
+                : const Color(0xFFE8E3DD),
+            width: 1,
+          ),
         ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
         child: Column(
+          mainAxisSize: MainAxisSize.min, // Prevent overflow
           children: [
-            _buildAudioIcon(),
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: hasFile ? const Color(0xFF10B981) : const Color(0xFF8B7355),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: (hasFile
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFF8B7355))
+                        .withOpacity(0.2),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Icon(
+                hasFile ? Icons.check_circle : Icons.audiotrack,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              hasFile ? 'Audio File Selected!' : 'Upload Audio',
+              style: const TextStyle(
+                color: Color(0xFF2D2D2D),
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              hasFile
+                  ? 'Ready for AssemblyAI transcription'
+                  : 'Upload audio for AI transcription',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF8B7355),
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                height: 1.4,
+              ),
+            ),
+            
+            // Show processing status
+            if (_isProcessing && _processingStatus.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3B82F6).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFF3B82F6).withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min, // Prevent overflow
+                  children: [
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible( // Use Flexible instead of Expanded
+                      child: Text(
+                        _processingStatus,
+                        style: const TextStyle(
+                          color: Color(0xFF3B82F6),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            
             const SizedBox(height: 20),
-            _buildTitle(),
-            const SizedBox(height: 8),
-            _buildDescription(),
-            const SizedBox(height: 24),
-            if (!hasFile) _buildUploadArea(),
+            if (!hasFile)
+              _buildActionButton(
+                text: _isPickingFile ? 'Selecting...' : 'Choose Audio File',
+                icon: _isPickingFile ? null : Icons.upload_file,
+                onPressed: _isPickingFile ? null : _pickAudioFile,
+                isPrimary: true,
+                isLoading: _isPickingFile,
+              ),
             if (hasFile) ...[
-              _buildSelectedFile(),
-              const SizedBox(height: 20),
-              _buildActionButtons(),
+              _buildSelectedFileCard(),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildActionButton(
+                      text: 'Change File',
+                      icon: Icons.swap_horiz,
+                      onPressed: _isProcessing ? null : () {
+                        _jobPollingTimer?.cancel();
+                        setState(() {
+                          _selectedFile = null;
+                          _selectedWebFile = null;
+                          _isProcessing = false;
+                          _processingStatus = '';
+                          _currentJobId = null;
+                          _requestInProgress = false;
+                        });
+                      },
+                      isPrimary: false,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: _buildActionButton(
+                      text: _isProcessing ? 'Processing...' : 'Process Audio',
+                      icon: _isProcessing ? null : Icons.auto_awesome,
+                      onPressed: _isProcessing ? null : _processAudio,
+                      isPrimary: true,
+                      isLoading: _isProcessing,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ],
         ),
@@ -847,159 +1034,38 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
     );
   }
 
-  Widget _buildAudioIcon() {
-    final hasFile = _selectedAudioFile != null || _selectedWebAudioFile != null;
-
-    return AnimatedBuilder(
-      animation: _breathingAnimation,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: hasFile ? 1.0 : _breathingAnimation.value,
-          child: Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: hasFile
-                    ? [const Color(0xFF10B981), const Color(0xFF059669)]
-                    : [const Color(0xFF2D2D2D), const Color(0xFF3D3D3D)],
-              ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: (hasFile
-                          ? const Color(0xFF10B981)
-                          : const Color(0xFF2D2D2D))
-                      .withOpacity(0.2),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Icon(
-              hasFile ? Icons.check_circle_outline : Icons.audiotrack,
-              color: Colors.white,
-              size: 32,
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildTitle() {
-    final hasFile = _selectedAudioFile != null || _selectedWebAudioFile != null;
-
-    return Text(
-      hasFile ? 'Audio Ready' : 'Audio Processing',
-      style: const TextStyle(
-        fontSize: 20,
-        fontWeight: FontWeight.w700,
-        color: Color(0xFF2D2D2D),
-        letterSpacing: -0.2,
-      ),
-    );
-  }
-
-  Widget _buildDescription() {
-    final hasFile = _selectedAudioFile != null || _selectedWebAudioFile != null;
-
-    return Text(
-      hasFile
-          ? 'Your audio file is ready for speech-to-text conversion'
-          : 'Upload audio files for AI-powered transcription',
-      textAlign: TextAlign.center,
-      style: const TextStyle(
-        fontSize: 14,
-        color: Color(0xFF8B7355),
-        fontWeight: FontWeight.w400,
-        height: 1.4,
-      ),
-    );
-  }
-
-  Widget _buildUploadArea() {
-    return GestureDetector(
-      onTap: _pickAudioFile,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: const Color(0xFFE8E3DD),
-            width: 1.5,
-            style: BorderStyle.solid,
-          ),
-          borderRadius: BorderRadius.circular(12),
-          color: Colors.white,
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: const Color(0xFF8B7355).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(
-                Icons.cloud_upload_outlined,
-                color: Color(0xFF8B7355),
-                size: 22,
-              ),
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              'Drop audio file here or click to browse',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF2D2D2D),
-              ),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Supports MP3, WAV, M4A, AAC, FLAC formats',
-              style: TextStyle(
-                fontSize: 12,
-                color: Color(0xFF8B7355),
-                fontWeight: FontWeight.w400,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSelectedFile() {
+  Widget _buildSelectedFileCard() {
     final fileName = kIsWeb
-        ? (_selectedWebAudioFile?.name ?? 'Audio File')
-        : (_selectedAudioFile?.path.split('/').last ?? 'Audio File');
+        ? (_selectedWebFile?.name ?? 'Audio File')
+        : (_selectedFile?.path.split('/').last ?? 'Audio File');
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF0FDF4),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: const Color(0xFF10B981).withOpacity(0.2),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
-            width: 40,
-            height: 40,
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: const Color(0xFF10B981).withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(
               Icons.audiotrack,
-              color: Color(0xFF059669),
+              color: Color(0xFF10B981),
               size: 20,
             ),
           ),
@@ -1019,9 +1085,9 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
                 ),
                 const SizedBox(height: 2),
                 const Text(
-                  'Ready for transcription',
+                  'Ready for AssemblyAI transcription',
                   style: TextStyle(
-                    color: Color(0xFF059669),
+                    color: Color(0xFF10B981),
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
@@ -1034,104 +1100,83 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
     );
   }
 
-  Widget _buildActionButtons() {
-    return Row(
-      children: [
-        Expanded(
-          child: TextButton(
-            onPressed: () {
-              setState(() {
-                _selectedAudioFile = null;
-                _selectedWebAudioFile = null;
-              });
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF8B7355),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-            ),
-            child: const Text(
-              'Remove File',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          flex: 2,
-          child: Container(
-            height: 44,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
+  Widget _buildActionButton({
+    required String text,
+    IconData? icon,
+    required VoidCallback? onPressed,
+    required bool isPrimary,
+    bool isLoading = false,
+  }) {
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: isPrimary
+            ? [
                 BoxShadow(
                   color: const Color(0xFF2D2D2D).withOpacity(0.1),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
-              ],
-            ),
-            child: ElevatedButton(
-              onPressed: _isProcessing ? null : _processAudio,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2D2D2D),
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: const Color(0xFFF3F4F6),
-                disabledForegroundColor: const Color(0xFF9CA3AF),
-                elevation: 0,
-                shadowColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+              ]
+            : null,
+      ),
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor:
+              isPrimary ? const Color(0xFF2D2D2D) : Colors.transparent,
+          foregroundColor: isPrimary ? Colors.white : const Color(0xFF8B7355),
+          disabledBackgroundColor:
+              isPrimary ? const Color(0xFFF3F4F6) : Colors.transparent,
+          disabledForegroundColor: const Color(0xFF9CA3AF),
+          elevation: 0,
+          shadowColor: Colors.transparent,
+          side: isPrimary
+              ? null
+              : const BorderSide(
+                  color: Color(0xFFE8E3DD),
+                  width: 1,
                 ),
-              ),
-              child: _isProcessing
-                  ? const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'Processing...',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    )
-                  : const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.transform, size: 16),
-                        SizedBox(width: 6),
-                        Text(
-                          'Process Audio',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
-      ],
+        child: isLoading
+            ? const SizedBox(
+                height: 16,
+                width: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min, // Prevent overflow
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: 16),
+                    const SizedBox(width: 6),
+                  ],
+                  Flexible( // Use Flexible instead of expanded
+                    child: Text(
+                      text,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 }
 
-// Enhanced Image/Camera Widget
+// Enhanced Camera Widget - Same pattern as audio
 class EnhancedCameraWidget extends StatefulWidget {
   final Function(ProcessingResult) onImagesProcessed;
 
@@ -1146,31 +1191,48 @@ class _EnhancedCameraWidgetState extends State<EnhancedCameraWidget>
   List<File> _selectedImages = [];
   List<PlatformFile> _selectedWebImages = [];
   bool _isProcessing = false;
+  bool _isPickingImages = false;
+  Timer? _jobPollingTimer;
+  String? _currentJobId;
+  String _processingStatus = '';
+  bool _requestInProgress = false;
 
-  late AnimationController _shimmerController;
-  late Animation<double> _shimmerAnimation;
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
-    _shimmerController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 500),
       vsync: this,
     );
-    _shimmerAnimation = Tween<double>(begin: -1.0, end: 1.0).animate(
-      CurvedAnimation(parent: _shimmerController, curve: Curves.easeInOut),
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeOut),
     );
-    _shimmerController.repeat();
+    _fadeController.forward();
   }
 
   @override
   void dispose() {
-    _shimmerController.dispose();
+    _jobPollingTimer?.cancel();
+    _fadeController.dispose();
     super.dispose();
   }
 
   Future<void> _pickImages() async {
+    if (_isPickingImages) {
+      print('Image picker already in progress, ignoring request');
+      return;
+    }
+
+    setState(() {
+      _isPickingImages = true;
+    });
+
     try {
+      await Future.delayed(const Duration(milliseconds: 200));
+      
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.image,
         allowMultiple: true,
@@ -1183,20 +1245,22 @@ class _EnhancedCameraWidgetState extends State<EnhancedCameraWidget>
             _selectedWebImages = result.files;
             _selectedImages = [];
           } else {
-            _selectedImages =
-                result.files.map((file) => File(file.path!)).toList();
+            _selectedImages = result.paths.map((path) => File(path!)).toList();
             _selectedWebImages = [];
           }
         });
 
-        final count = result.files.length;
-        _showSnackBar(
-          '${count} image${count > 1 ? 's' : ''} selected successfully',
-          isError: false,
-        );
+        final count = kIsWeb ? _selectedWebImages.length : _selectedImages.length;
+        _showSnackBar('$count image(s) selected successfully!', isError: false);
       }
     } catch (e) {
-      _showSnackBar('Selection failed: $e', isError: true);
+      if (!e.toString().contains('multiple_request') && !e.toString().contains('User cancelled')) {
+        _showSnackBar('Error selecting images: $e', isError: true);
+      }
+    } finally {
+      setState(() {
+        _isPickingImages = false;
+      });
     }
   }
 
@@ -1206,99 +1270,347 @@ class _EnhancedCameraWidgetState extends State<EnhancedCameraWidget>
       return;
     }
 
+    if (_requestInProgress) {
+      print('Image processing request already in progress, ignoring');
+      return;
+    }
+
     setState(() {
+      _requestInProgress = true;
       _isProcessing = true;
+      _processingStatus = 'Starting image processing...';
     });
 
     try {
-      ProcessingResult? result;
-
+      Map<String, dynamic>? jobInfo;
+      
       if (kIsWeb) {
-        result = await ApiService.processImagesWeb(_selectedWebImages);
+        jobInfo = await BackgroundJobApiService.processImagesWeb(
+          _selectedWebImages,
+          maxConcurrent: 5,
+        );
       } else {
-        result = await ApiService.processImages(_selectedImages);
+        jobInfo = await BackgroundJobApiService.processImages(
+          _selectedImages,
+          maxConcurrent: 5,
+        );
       }
 
-      if (result?.success == true) {
-        widget.onImagesProcessed(result!);
-        _showSnackBar('Images processed successfully', isError: false);
+      if (jobInfo != null && jobInfo['success'] == true) {
+        _currentJobId = jobInfo['job_id'];
         setState(() {
-          _selectedImages.clear();
-          _selectedWebImages.clear();
+          _processingStatus = 'Processing started - monitoring progress...';
         });
+        
+        _showSnackBar('Image processing started! Monitoring progress...', isError: false);
+        _startJobPolling();
       } else {
-        throw Exception(result?.message ?? 'Processing failed');
+        throw Exception(jobInfo?['message'] ?? 'Failed to start image processing');
       }
     } catch (e) {
-      _showSnackBar('Processing failed: ${e.toString()}', isError: true);
-    } finally {
+      _showSnackBar('Failed to start image processing: ${e.toString()}', isError: true);
       setState(() {
         _isProcessing = false;
+        _processingStatus = '';
+        _requestInProgress = false;
       });
     }
   }
 
-  void _removeImage(int index) {
-    setState(() {
-      if (kIsWeb) {
-        _selectedWebImages.removeAt(index);
-      } else {
-        _selectedImages.removeAt(index);
+  void _startJobPolling() {
+    if (_currentJobId == null) return;
+    
+    _jobPollingTimer = Timer.periodic(Duration(seconds: 3), (timer) async {
+      try {
+        final status = await BackgroundJobApiService.getJobStatus(_currentJobId!);
+        
+        if (status != null) {
+          setState(() {
+            _processingStatus = _getStatusMessage(status);
+          });
+          
+          if (status['status'] == 'completed') {
+            timer.cancel();
+            await _handleJobCompletion(status);
+          } else if (status['status'] == 'failed') {
+            timer.cancel();
+            _handleJobFailure(status);
+          }
+        }
+      } catch (e) {
+        print('Error polling job status: $e');
       }
     });
   }
 
-  void _showSnackBar(String message, {required bool isError}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        backgroundColor:
-            isError ? const Color(0xFFDC2626) : const Color(0xFF10B981),
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        elevation: 6,
-      ),
+  String _getStatusMessage(Map<String, dynamic> status) {
+    switch (status['status']) {
+      case 'pending':
+        return 'Image processing queued...';
+      case 'processing':
+        return 'Extracting text with OCR...';
+      case 'completed':
+        return 'Image processing completed!';
+      case 'failed':
+        return 'Image processing failed';
+      default:
+        return 'Processing images...';
+    }
+  }
+
+  Future<void> _handleJobCompletion(Map<String, dynamic> status) async {
+    try {
+      final result = status['result'];
+      if (result != null) {
+        final processingResult = _convertJobResultToProcessingResult(result);
+        widget.onImagesProcessed(processingResult);
+        _showSnackBar('Images processed successfully! Check Processing tab', isError: false);
+        
+        setState(() {
+          _selectedImages = [];
+          _selectedWebImages = [];
+          _isProcessing = false;
+          _processingStatus = '';
+          _currentJobId = null;
+          _requestInProgress = false;
+        });
+      } else {
+        final sessionId = status['session_id'];
+        if (sessionId != null) {
+          final results = await BackgroundJobApiService.getResults(sessionId);
+          if (results != null) {
+            final processingResult = _convertJobResultToProcessingResult(results);
+            widget.onImagesProcessed(processingResult);
+            _showSnackBar('Images processed successfully! Check Processing tab', isError: false);
+            
+            setState(() {
+              _selectedImages = [];
+              _selectedWebImages = [];
+              _isProcessing = false;
+              _processingStatus = '';
+              _currentJobId = null;
+              _requestInProgress = false;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      _handleJobFailure({'error_message': e.toString()});
+    }
+  }
+
+  void _handleJobFailure(Map<String, dynamic> status) {
+    final errorMessage = status['error_message'] ?? 'Unknown error occurred';
+    _showSnackBar('Image processing failed: $errorMessage', isError: true);
+    
+    setState(() {
+      _isProcessing = false;
+      _processingStatus = '';
+      _currentJobId = null;
+      _requestInProgress = false;
+    });
+  }
+
+  ProcessingResult _convertJobResultToProcessingResult(Map<String, dynamic> result) {
+    List<PageBatchModel> pageBatches = [];
+    
+    if (result['pages'] != null) {
+      for (var page in result['pages']) {
+        pageBatches.add(PageBatchModel(
+          batchNumber: page['page_number'] ?? 1,
+          pageRange: (page['page_number'] ?? 1).toString(),
+          cleanedText: page['cleaned_text'] ?? page['text'] ?? '',
+          wordCount: page['word_count'] ?? 0,
+          cleaned: page['cleaned'] ?? false,
+          pagesInBatch: 1,
+        ));
+      }
+    }
+
+    return ProcessingResult(
+      success: result['success'] ?? true,
+      message: result['message'] ?? 'Image processing completed',
+      fileName: result['file_name'] ?? 'Image Processing',
+      totalPageBatches: result['total_items'] ?? pageBatches.length,
+      totalWords: result['total_words'] ?? 0,
+      estimatedReadingTimeMinutes: result['estimated_reading_time_minutes'] ?? 0.0,
+      pageBatches: pageBatches,
+      processingTimeSeconds: result['processing_time_seconds'] ?? 0.0,
     );
+  }
+
+  void _showSnackBar(String message, {required bool isError}) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            message,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          backgroundColor:
+              isError ? const Color(0xFFDC2626) : const Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 6,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final hasImages =
-        _selectedImages.isNotEmpty || _selectedWebImages.isNotEmpty;
-    final imageCount =
-        kIsWeb ? _selectedWebImages.length : _selectedImages.length;
+    final hasImages = _selectedImages.isNotEmpty || _selectedWebImages.isNotEmpty;
+    final imageCount = kIsWeb ? _selectedWebImages.length : _selectedImages.length;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F3F0), // Beige background
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: const Color(0xFFE8E3DD),
-          width: 1,
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: hasImages ? const Color(0xFFF0FDF4) : const Color(0xFFF5F3F0),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: hasImages
+                ? const Color(0xFF10B981).withOpacity(0.3)
+                : const Color(0xFFE8E3DD),
+            width: 1,
+          ),
         ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            _buildCameraIcon(),
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: hasImages ? const Color(0xFF10B981) : const Color(0xFF8B7355),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: (hasImages
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFF8B7355))
+                        .withOpacity(0.2),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Icon(
+                hasImages ? Icons.check_circle : Icons.image,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              hasImages ? '$imageCount Image(s) Selected!' : 'Upload Images',
+              style: const TextStyle(
+                color: Color(0xFF2D2D2D),
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              hasImages
+                  ? 'Ready to extract text with AI OCR'
+                  : 'Upload images for AI text extraction',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF8B7355),
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                height: 1.4,
+              ),
+            ),
+            
+            if (_isProcessing && _processingStatus.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3B82F6).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFF3B82F6).withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        _processingStatus,
+                        style: const TextStyle(
+                          color: Color(0xFF3B82F6),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            
             const SizedBox(height: 20),
-            _buildTitle(),
-            const SizedBox(height: 8),
-            _buildDescription(),
-            const SizedBox(height: 24),
-            if (!hasImages) _buildUploadArea(),
+            if (!hasImages)
+              _buildActionButton(
+                text: _isPickingImages ? 'Selecting...' : 'Choose Images',
+                icon: _isPickingImages ? null : Icons.upload_file,
+                onPressed: _isPickingImages ? null : _pickImages,
+                isPrimary: true,
+                isLoading: _isPickingImages,
+              ),
             if (hasImages) ...[
-              _buildImageGrid(),
-              const SizedBox(height: 20),
-              _buildActionButtons(),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildActionButton(
+                      text: 'Change Images',
+                      icon: Icons.swap_horiz,
+                      onPressed: _isProcessing ? null : () {
+                        _jobPollingTimer?.cancel();
+                        setState(() {
+                          _selectedImages = [];
+                          _selectedWebImages = [];
+                          _isProcessing = false;
+                          _processingStatus = '';
+                          _currentJobId = null;
+                          _requestInProgress = false;
+                        });
+                      },
+                      isPrimary: false,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: _buildActionButton(
+                      text: _isProcessing ? 'Processing...' : 'Extract Text',
+                      icon: _isProcessing ? null : Icons.document_scanner,
+                      onPressed: _isProcessing ? null : _processImages,
+                      isPrimary: true,
+                      isLoading: _isProcessing,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ],
         ),
@@ -1306,364 +1618,250 @@ class _EnhancedCameraWidgetState extends State<EnhancedCameraWidget>
     );
   }
 
-  Widget _buildCameraIcon() {
-    final hasImages =
-        _selectedImages.isNotEmpty || _selectedWebImages.isNotEmpty;
-
+  Widget _buildActionButton({
+    required String text,
+    IconData? icon,
+    required VoidCallback? onPressed,
+    required bool isPrimary,
+    bool isLoading = false,
+  }) {
     return Container(
-      width: 80,
-      height: 80,
+      height: 44,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: hasImages
-              ? [const Color(0xFF7C3AED), const Color(0xFF8B5CF6)]
-              : [const Color(0xFF2D2D2D), const Color(0xFF3D3D3D)],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color:
-                (hasImages ? const Color(0xFF8B5CF6) : const Color(0xFF2D2D2D))
-                    .withOpacity(0.2),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Icon(
-        hasImages ? Icons.photo_library : Icons.camera_alt,
-        color: Colors.white,
-        size: 32,
-      ),
-    );
-  }
-
-  Widget _buildTitle() {
-    final hasImages =
-        _selectedImages.isNotEmpty || _selectedWebImages.isNotEmpty;
-    final imageCount =
-        kIsWeb ? _selectedWebImages.length : _selectedImages.length;
-
-    return Text(
-      hasImages
-          ? '$imageCount Image${imageCount > 1 ? 's' : ''} Selected'
-          : 'Image Recognition',
-      style: const TextStyle(
-        fontSize: 20,
-        fontWeight: FontWeight.w700,
-        color: Color(0xFF2D2D2D),
-        letterSpacing: -0.2,
-      ),
-    );
-  }
-
-  Widget _buildDescription() {
-    final hasImages =
-        _selectedImages.isNotEmpty || _selectedWebImages.isNotEmpty;
-
-    return Text(
-      hasImages
-          ? 'Your images are ready for AI-powered text extraction'
-          : 'Upload images for advanced OCR and text recognition',
-      textAlign: TextAlign.center,
-      style: const TextStyle(
-        fontSize: 14,
-        color: Color(0xFF8B7355),
-        fontWeight: FontWeight.w400,
-        height: 1.4,
-      ),
-    );
-  }
-
-  Widget _buildUploadArea() {
-    return GestureDetector(
-      onTap: _pickImages,
-      child: AnimatedBuilder(
-        animation: _shimmerAnimation,
-        builder: (context, child) {
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(28),
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: const Color(0xFFE8E3DD),
-                width: 1.5,
-                style: BorderStyle.solid,
-              ),
-              borderRadius: BorderRadius.circular(12),
-              color: Colors.white,
-            ),
-            child: Column(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF8B7355).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(
-                    Icons.add_photo_alternate_outlined,
-                    color: Color(0xFF8B7355),
-                    size: 26,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Drop images here or click to select',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF2D2D2D),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Supports JPG, PNG, HEIC, WebP formats • Multiple files allowed',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF8B7355),
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildImageGrid() {
-    final imageCount =
-        kIsWeb ? _selectedWebImages.length : _selectedImages.length;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8F4FF),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFF8B5CF6).withOpacity(0.2),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF8B5CF6).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.photo_library,
-                  color: Color(0xFF7C3AED),
-                  size: 18,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$imageCount Selected Image${imageCount > 1 ? 's' : ''}',
-                      style: const TextStyle(
-                        color: Color(0xFF2D2D2D),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const Text(
-                      'Ready for OCR processing',
-                      style: TextStyle(
-                        color: Color(0xFF7C3AED),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 70,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: imageCount,
-              itemBuilder: (context, index) {
-                final fileName = kIsWeb
-                    ? _selectedWebImages[index].name
-                    : _selectedImages[index].path.split('/').last;
-
-                return Container(
-                  margin: const EdgeInsets.only(right: 12),
-                  width: 100,
-                  child: Stack(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: const Color(0xFF8B5CF6).withOpacity(0.2),
-                          ),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.image,
-                              color: Color(0xFF8B5CF6),
-                              size: 20,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              fileName,
-                              style: const TextStyle(
-                                color: Color(0xFF2D2D2D),
-                                fontSize: 10,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
-                      Positioned(
-                        top: 4,
-                        right: 4,
-                        child: GestureDetector(
-                          onTap: () => _removeImage(index),
-                          child: Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFDC2626),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.close,
-                              color: Colors.white,
-                              size: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButtons() {
-    return Row(
-      children: [
-        Expanded(
-          child: TextButton(
-            onPressed: () {
-              setState(() {
-                _selectedImages.clear();
-                _selectedWebImages.clear();
-              });
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF8B7355),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-            ),
-            child: const Text(
-              'Clear All',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          flex: 2,
-          child: Container(
-            height: 44,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
+        boxShadow: isPrimary
+            ? [
                 BoxShadow(
                   color: const Color(0xFF2D2D2D).withOpacity(0.1),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
-              ],
-            ),
-            child: ElevatedButton(
-              onPressed: _isProcessing ? null : _processImages,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2D2D2D),
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: const Color(0xFFF3F4F6),
-                disabledForegroundColor: const Color(0xFF9CA3AF),
-                elevation: 0,
-                shadowColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+              ]
+            : null,
+      ),
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor:
+              isPrimary ? const Color(0xFF2D2D2D) : Colors.transparent,
+          foregroundColor: isPrimary ? Colors.white : const Color(0xFF8B7355),
+          disabledBackgroundColor:
+              isPrimary ? const Color(0xFFF3F4F6) : Colors.transparent,
+          disabledForegroundColor: const Color(0xFF9CA3AF),
+          elevation: 0,
+          shadowColor: Colors.transparent,
+          side: isPrimary
+              ? null
+              : const BorderSide(
+                  color: Color(0xFFE8E3DD),
+                  width: 1,
                 ),
-              ),
-              child: _isProcessing
-                  ? const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'Processing...',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    )
-                  : const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.document_scanner, size: 16),
-                        SizedBox(width: 6),
-                        Text(
-                          'Extract Text',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
-      ],
+        child: isLoading
+            ? const SizedBox(
+                height: 16,
+                width: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: 16),
+                    const SizedBox(width: 6),
+                  ],
+                  Flexible(
+                    child: Text(
+                      text,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+      ),
     );
+  }
+}
+
+// BACKGROUND JOB API SERVICE - Fixed polling and result retrieval
+class BackgroundJobApiService {
+  static const String baseUrl = 'https://imgbooc-production.up.railway.app';
+
+  static Future<Map<String, dynamic>?> processImages(List<File> files,
+      {int maxConcurrent = 5}) async {
+    try {
+      final uri = Uri.parse('$baseUrl/process-images');
+      final request = http.MultipartRequest('POST', uri);
+
+      request.fields['max_concurrent'] = maxConcurrent.toString();
+
+      for (int i = 0; i < files.length; i++) {
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'files',
+            files[i].path,
+            filename: files[i].path.split('/').last,
+          ),
+        );
+      }
+
+      request.headers.addAll({
+        'Accept': 'application/json',
+        'User-Agent': 'Bookey-Flutter-App/1.0',
+      });
+
+      print('Starting background image processing: $baseUrl/process-images');
+      final streamedResponse = await request.send().timeout(Duration(seconds: 30));
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('Job start response status: ${response.statusCode}');
+      print('Job start response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['detail'] ?? 'Failed to start image processing');
+      }
+    } catch (e) {
+      print('Error starting image processing: $e');
+      throw Exception('Failed to start image processing: ${e.toString()}');
+    }
+  }
+
+  static Future<Map<String, dynamic>?> processImagesWeb(List<PlatformFile> webFiles,
+      {int maxConcurrent = 5}) async {
+    try {
+      final uri = Uri.parse('$baseUrl/process-images');
+      final request = http.MultipartRequest('POST', uri);
+
+      request.fields['max_concurrent'] = maxConcurrent.toString();
+
+      for (var webFile in webFiles) {
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'files',
+            webFile.bytes!,
+            filename: webFile.name,
+          ),
+        );
+      }
+
+      request.headers.addAll({
+        'Accept': 'application/json',
+        'User-Agent': 'Bookey-Flutter-App/1.0',
+      });
+
+      print('Starting background web image processing: $baseUrl/process-images');
+      final streamedResponse = await request.send().timeout(Duration(seconds: 30));
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('Job start response status: ${response.statusCode}');
+      print('Job start response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['detail'] ?? 'Failed to start image processing');
+      }
+    } catch (e) {
+      print('Error starting web image processing: $e');
+      throw Exception('Failed to start image processing: ${e.toString()}');
+    }
+  }
+
+  static Future<Map<String, dynamic>?> processAudio(File? file, PlatformFile? webFile) async {
+    try {
+      final uri = Uri.parse('$baseUrl/process-audio');
+      final request = http.MultipartRequest('POST', uri);
+
+      if (kIsWeb && webFile != null) {
+        request.files.add(http.MultipartFile.fromBytes('file', webFile.bytes!,
+            filename: webFile.name));
+      } else if (file != null) {
+        request.files.add(await http.MultipartFile.fromPath('file', file.path,
+            filename: file.path.split('/').last));
+      }
+
+      request.headers.addAll({
+        'Accept': 'application/json',
+        'User-Agent': 'Bookey-Flutter-App/1.0',
+      });
+
+      print('Starting background audio processing: $baseUrl/process-audio');
+      final streamedResponse = await request.send().timeout(Duration(seconds: 30));
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('Audio job start response status: ${response.statusCode}');
+      print('Audio job start response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['detail'] ?? 'Failed to start audio processing');
+      }
+    } catch (e) {
+      print('Error starting audio processing: $e');
+      throw Exception('Failed to start audio processing: ${e.toString()}');
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getJobStatus(String jobId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/job-status/$jobId'),
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Bookey-Flutter-App/1.0',
+        },
+      ).timeout(Duration(seconds: 10));
+
+      print('Job status response for $jobId: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        print('Error getting job status: ${response.statusCode} - ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('Error polling job status: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getResults(String sessionId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/results/$sessionId'),
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Bookey-Flutter-App/1.0',
+        },
+      ).timeout(Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        print('Error getting results: ${response.statusCode} - ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('Error getting results: $e');
+      return null;
+    }
   }
 }

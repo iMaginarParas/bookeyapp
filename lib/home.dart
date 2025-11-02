@@ -10,7 +10,7 @@ import 'input.dart';
 
 class HomePage extends StatefulWidget {
   final Function(ProcessingResult) onContentProcessed;
-  
+
   const HomePage({super.key, required this.onContentProcessed});
 
   @override
@@ -21,18 +21,18 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   File? _selectedFile;
   PlatformFile? _selectedWebFile;
   bool _isProcessing = false;
-  
+
   late AnimationController _fadeController;
   late AnimationController _slideController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
-  
+
   int _selectedTabIndex = 0; // 0=AI Story, 1=Audio, 2=Images, 3=PDF
 
   @override
   void initState() {
     super.initState();
-    
+
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
@@ -47,7 +47,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       CurvedAnimation(parent: _fadeController, curve: Curves.easeOut),
     );
 
-    _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
       CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic),
     );
 
@@ -81,7 +82,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             _selectedWebFile = null;
           }
         });
-        
+
         _showSnackBar('PDF selected successfully!', isError: false);
       }
     } catch (e) {
@@ -100,11 +101,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     });
 
     try {
-      final result = await ApiService.processPdfWithAI(_selectedFile, _selectedWebFile, maxConcurrent: 5);
-      
+      final result = await ApiService.processPdfWithAI(
+          _selectedFile, _selectedWebFile,
+          maxConcurrent: 5);
+
       if (result.success) {
         widget.onContentProcessed(result);
-        _showSnackBar('PDF processed successfully! Check Processing tab', isError: false);
+        _showSnackBar('PDF processed successfully! Check Processing tab',
+            isError: false);
       } else {
         throw Exception(result.message);
       }
@@ -127,7 +131,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             fontWeight: FontWeight.w500,
           ),
         ),
-        backgroundColor: isError ? const Color(0xFFDC2626) : const Color(0xFF10B981),
+        backgroundColor:
+            isError ? const Color(0xFFDC2626) : const Color(0xFF10B981),
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(16),
         shape: RoundedRectangleBorder(
@@ -139,8 +144,15 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   void _handleContentProcessed(ProcessingResult result) {
-    widget.onContentProcessed(result);
-    _showSnackBar('Content processed! Check Processing tab', isError: false);
+    // Show immediate feedback
+    _showSnackBar('Content processed successfully! Navigating to Processing...',
+        isError: false);
+
+    // Small delay for user to see the success message
+    Future.delayed(const Duration(milliseconds: 800), () {
+      // Navigate to processing tab and pass the result
+      widget.onContentProcessed(result);
+    });
   }
 
   @override
@@ -156,7 +168,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             slivers: [
               _buildAppBar(),
               SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     _buildWelcomeSection(),
@@ -488,14 +501,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Widget _buildPdfTab() {
     final hasFile = _selectedFile != null || _selectedWebFile != null;
-    
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: hasFile ? const Color(0xFFF0FDF4) : const Color(0xFFF5F3F0),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: hasFile ? const Color(0xFF10B981).withOpacity(0.3) : const Color(0xFFE8E3DD),
+          color: hasFile
+              ? const Color(0xFF10B981).withOpacity(0.3)
+              : const Color(0xFFE8E3DD),
           width: 1,
         ),
       ),
@@ -505,11 +520,15 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color: hasFile ? const Color(0xFF10B981) : const Color(0xFF8B7355),
+              color:
+                  hasFile ? const Color(0xFF10B981) : const Color(0xFF8B7355),
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: (hasFile ? const Color(0xFF10B981) : const Color(0xFF8B7355)).withOpacity(0.2),
+                  color: (hasFile
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFF8B7355))
+                      .withOpacity(0.2),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -532,7 +551,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           ),
           const SizedBox(height: 6),
           Text(
-            hasFile 
+            hasFile
                 ? 'Ready to process with AI text cleaning and enhancement'
                 : 'Upload PDF files for AI-powered text extraction and cleaning',
             textAlign: TextAlign.center,
@@ -589,7 +608,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildSelectedFileCard() {
-    final fileName = kIsWeb 
+    final fileName = kIsWeb
         ? (_selectedWebFile?.name ?? 'PDF Document')
         : (_selectedFile?.path.split('/').last ?? 'PDF Document');
 
@@ -618,8 +637,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(
-              Icons.picture_as_pdf, 
-              color: Color(0xFF10B981), 
+              Icons.picture_as_pdf,
+              color: Color(0xFF10B981),
               size: 20,
             ),
           ),
@@ -665,27 +684,33 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       height: 44,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        boxShadow: isPrimary ? [
-          BoxShadow(
-            color: const Color(0xFF2D2D2D).withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ] : null,
+        boxShadow: isPrimary
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF2D2D2D).withOpacity(0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
       ),
       child: ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor: isPrimary ? const Color(0xFF2D2D2D) : Colors.transparent,
+          backgroundColor:
+              isPrimary ? const Color(0xFF2D2D2D) : Colors.transparent,
           foregroundColor: isPrimary ? Colors.white : const Color(0xFF8B7355),
-          disabledBackgroundColor: isPrimary ? const Color(0xFFF3F4F6) : Colors.transparent,
+          disabledBackgroundColor:
+              isPrimary ? const Color(0xFFF3F4F6) : Colors.transparent,
           disabledForegroundColor: const Color(0xFF9CA3AF),
           elevation: 0,
           shadowColor: Colors.transparent,
-          side: isPrimary ? null : const BorderSide(
-            color: Color(0xFFE8E3DD),
-            width: 1,
-          ),
+          side: isPrimary
+              ? null
+              : const BorderSide(
+                  color: Color(0xFFE8E3DD),
+                  width: 1,
+                ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),

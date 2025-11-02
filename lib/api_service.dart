@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 
 // ================== NEW MODELS FOR NEW APIS ==================
 
-// Story Generator Models
+// Story Generator Models (unchanged)
 class StoryRequest {
   final String title;
   final String subject;
@@ -85,152 +85,6 @@ class StoryResponse {
   }
 }
 
-// Image/Audio Processing Models
-class MediaPageModel {
-  final int pageNumber;
-  final String title;
-  final String text;
-  final String? cleanedText;
-  final int wordCount;
-  final int? originalWordCount;
-  final bool cleaned;
-  final double? improvementRatio;
-  final String processingMethod;
-
-  MediaPageModel({
-    required this.pageNumber,
-    required this.title,
-    required this.text,
-    this.cleanedText,
-    required this.wordCount,
-    this.originalWordCount,
-    required this.cleaned,
-    this.improvementRatio,
-    required this.processingMethod,
-  });
-
-  factory MediaPageModel.fromJson(Map<String, dynamic> json) {
-    return MediaPageModel(
-      pageNumber: json['page_number'] ?? 0,
-      title: json['title'] ?? '',
-      text: json['text'] ?? '',
-      cleanedText: json['cleaned_text'],
-      wordCount: json['word_count'] ?? 0,
-      originalWordCount: json['original_word_count'],
-      cleaned: json['cleaned'] ?? false,
-      improvementRatio: json['improvement_ratio']?.toDouble(),
-      processingMethod: json['processing_method'] ?? '',
-    );
-  }
-
-  String get displayText => cleanedText ?? text;
-  String get displayTitle => title;
-}
-
-class MediaPartModel {
-  final int partNumber;
-  final String title;
-  final String text;
-  final String? cleanedText;
-  final int wordCount;
-  final int? originalWordCount;
-  final bool cleaned;
-  final double? improvementRatio;
-  final String processingMethod;
-  final double? durationSeconds;
-  final double? startTime;
-  final double? endTime;
-
-  MediaPartModel({
-    required this.partNumber,
-    required this.title,
-    required this.text,
-    this.cleanedText,
-    required this.wordCount,
-    this.originalWordCount,
-    required this.cleaned,
-    this.improvementRatio,
-    required this.processingMethod,
-    this.durationSeconds,
-    this.startTime,
-    this.endTime,
-  });
-
-  factory MediaPartModel.fromJson(Map<String, dynamic> json) {
-    return MediaPartModel(
-      partNumber: json['part_number'] ?? 0,
-      title: json['title'] ?? '',
-      text: json['text'] ?? '',
-      cleanedText: json['cleaned_text'],
-      wordCount: json['word_count'] ?? 0,
-      originalWordCount: json['original_word_count'],
-      cleaned: json['cleaned'] ?? false,
-      improvementRatio: json['improvement_ratio']?.toDouble(),
-      processingMethod: json['processing_method'] ?? '',
-      durationSeconds: json['duration_seconds']?.toDouble(),
-      startTime: json['start_time']?.toDouble(),
-      endTime: json['end_time']?.toDouble(),
-    );
-  }
-
-  String get displayText => cleanedText ?? text;
-  String get displayTitle => title;
-}
-
-class MediaProcessingResult {
-  final bool success;
-  final String message;
-  final String fileName;
-  final String contentType; // "image" or "audio"
-  final int totalItems;
-  final int totalWords;
-  final double estimatedReadingTimeMinutes;
-  final List<MediaPageModel>? pages; // for images
-  final List<MediaPartModel>? parts; // for audio
-  final double processingTimeSeconds;
-  final double? audioDurationSeconds;
-
-  MediaProcessingResult({
-    required this.success,
-    required this.message,
-    required this.fileName,
-    required this.contentType,
-    required this.totalItems,
-    required this.totalWords,
-    required this.estimatedReadingTimeMinutes,
-    this.pages,
-    this.parts,
-    required this.processingTimeSeconds,
-    this.audioDurationSeconds,
-  });
-
-  factory MediaProcessingResult.fromJson(Map<String, dynamic> json) {
-    return MediaProcessingResult(
-      success: json['success'] ?? false,
-      message: json['message'] ?? '',
-      fileName: json['file_name'] ?? '',
-      contentType: json['content_type'] ?? '',
-      totalItems: json['total_items'] ?? 0,
-      totalWords: json['total_words'] ?? 0,
-      estimatedReadingTimeMinutes:
-          (json['estimated_reading_time_minutes'] ?? 0.0).toDouble(),
-      pages: json['pages'] != null
-          ? (json['pages'] as List)
-              .map((p) => MediaPageModel.fromJson(p))
-              .toList()
-          : null,
-      parts: json['parts'] != null
-          ? (json['parts'] as List)
-              .map((p) => MediaPartModel.fromJson(p))
-              .toList()
-          : null,
-      processingTimeSeconds:
-          (json['processing_time_seconds'] ?? 0.0).toDouble(),
-      audioDurationSeconds: json['audio_duration_seconds']?.toDouble(),
-    );
-  }
-}
-
 // Updated existing models (keep existing PageBatchModel for compatibility)
 class PageBatchModel {
   final int batchNumber;
@@ -260,26 +114,26 @@ class PageBatchModel {
     );
   }
 
-  // Factory constructor to convert from MediaPageModel
-  factory PageBatchModel.fromMediaPage(MediaPageModel page) {
+  // Factory constructor to convert from new API page response
+  factory PageBatchModel.fromNewPageResponse(Map<String, dynamic> page) {
     return PageBatchModel(
-      batchNumber: page.pageNumber,
-      pageRange: page.pageNumber.toString(),
-      cleanedText: page.displayText,
-      wordCount: page.wordCount,
-      cleaned: page.cleaned,
+      batchNumber: page['page_number'] ?? 1,
+      pageRange: (page['page_number'] ?? 1).toString(),
+      cleanedText: page['cleaned_text'] ?? page['text'] ?? '',
+      wordCount: page['word_count'] ?? 0,
+      cleaned: page['cleaned'] ?? false,
       pagesInBatch: 1,
     );
   }
 
-  // Factory constructor to convert from MediaPartModel
-  factory PageBatchModel.fromMediaPart(MediaPartModel part) {
+  // Factory constructor to convert from new API part response
+  factory PageBatchModel.fromNewPartResponse(Map<String, dynamic> part) {
     return PageBatchModel(
-      batchNumber: part.partNumber,
-      pageRange: "Part ${part.partNumber}",
-      cleanedText: part.displayText,
-      wordCount: part.wordCount,
-      cleaned: part.cleaned,
+      batchNumber: part['part_number'] ?? 1,
+      pageRange: "Part ${part['part_number'] ?? 1}",
+      cleanedText: part['cleaned_text'] ?? part['text'] ?? '',
+      wordCount: part['word_count'] ?? 0,
+      cleaned: part['cleaned'] ?? false,
       pagesInBatch: 1,
     );
   }
@@ -359,30 +213,33 @@ class ProcessingResult {
     );
   }
 
-  // Factory constructor to convert from MediaProcessingResult
-  factory ProcessingResult.fromMediaProcessingResult(
-      MediaProcessingResult media) {
+  // Factory constructor to convert from new API response format
+  factory ProcessingResult.fromNewApiResponse(Map<String, dynamic> json) {
     List<PageBatchModel> batches = [];
 
-    if (media.pages != null) {
-      batches = media.pages!
-          .map((page) => PageBatchModel.fromMediaPage(page))
+    if (json['pages'] != null) {
+      // Image processing response - convert pages to page batches
+      batches = (json['pages'] as List)
+          .map((page) => PageBatchModel.fromNewPageResponse(page))
           .toList();
-    } else if (media.parts != null) {
-      batches = media.parts!
-          .map((part) => PageBatchModel.fromMediaPart(part))
+    } else if (json['parts'] != null) {
+      // Audio processing response - convert parts to page batches
+      batches = (json['parts'] as List)
+          .map((part) => PageBatchModel.fromNewPartResponse(part))
           .toList();
     }
 
     return ProcessingResult(
-      success: media.success,
-      message: media.message,
-      fileName: media.fileName,
-      totalPageBatches: batches.length,
-      totalWords: media.totalWords,
-      estimatedReadingTimeMinutes: media.estimatedReadingTimeMinutes,
+      success: json['success'] ?? false,
+      message: json['message'] ?? '',
+      fileName: json['file_name'] ?? 'Processed Content',
+      totalPageBatches: json['total_items'] ?? batches.length,
+      totalWords: json['total_words'] ?? 0,
+      estimatedReadingTimeMinutes: 
+          (json['estimated_reading_time_minutes'] ?? 0.0).toDouble(),
       pageBatches: batches,
-      processingTimeSeconds: media.processingTimeSeconds,
+      processingTimeSeconds: 
+          (json['processing_time_seconds'] ?? 0.0).toDouble(),
     );
   }
 
@@ -405,12 +262,14 @@ class ProcessingResult {
 }
 
 class ApiService {
-  // Existing PDF processing endpoints
+  // Existing PDF processing endpoints (unchanged)
   static const String baseUrl = 'https://bookey-pdf-production.up.railway.app';
 
-  // New API endpoints
+  // Story API (unchanged)
   static const String storyApiUrl = 'https://stboo-production.up.railway.app';
-  static const String mediaApiUrl = 'https://imgboo-production.up.railway.app';
+  
+  // NEW: Unified Media API endpoint
+  static const String mediaApiUrl = 'https://imgbooc-production.up.railway.app';
 
   static const int timeoutSeconds = 300;
 
@@ -504,7 +363,7 @@ class ApiService {
     }
   }
 
-  // ================== NEW STORY GENERATION METHODS ==================
+  // ================== EXISTING STORY GENERATION METHODS (unchanged) ==================
 
   static Future<ProcessingResult> generateStory(StoryRequest request) async {
     try {
@@ -589,14 +448,20 @@ class ApiService {
     }
   }
 
-  // ================== NEW IMAGE/AUDIO PROCESSING METHODS ==================
+  // ================== UPDATED IMAGE/AUDIO PROCESSING METHODS ==================
 
   static Future<ProcessingResult> processImages(List<File> files,
       {int maxConcurrent = 5}) async {
     try {
-      final uri = Uri.parse(
-          '$mediaApiUrl/process-images?max_concurrent=$maxConcurrent');
+      final uri = Uri.parse('$mediaApiUrl/process-images');
       final request = http.MultipartRequest('POST', uri);
+
+      // Add max_concurrent parameter
+      request.fields['max_concurrent'] = maxConcurrent.toString();
+      
+      // Generate session ID for tracking
+      final sessionId = _generateSessionId();
+      request.fields['session_id'] = sessionId;
 
       for (int i = 0; i < files.length; i++) {
         request.files.add(
@@ -608,20 +473,28 @@ class ApiService {
         );
       }
 
-      request.headers.addAll({'Accept': 'application/json'});
-      final streamedResponse =
+      request.headers.addAll({
+        'Accept': 'application/json',
+        'User-Agent': 'Bookey-Flutter-App/1.0',
+      });
+
+      print('Sending images to unified API: $mediaApiUrl/process-images');
+      final streamedResponse = 
           await request.send().timeout(Duration(seconds: timeoutSeconds));
       final response = await http.Response.fromStream(streamedResponse);
 
+      print('Image API Response Status: ${response.statusCode}');
+      print('Image API Response Body: ${response.body}');
+
       if (response.statusCode == 200) {
         final jsonData = json.decode(response.body);
-        final mediaResult = MediaProcessingResult.fromJson(jsonData);
-        return ProcessingResult.fromMediaProcessingResult(mediaResult);
+        return ProcessingResult.fromNewApiResponse(jsonData);
       } else {
         final errorData = json.decode(response.body);
         throw Exception(errorData['detail'] ?? 'Failed to process images');
       }
     } catch (e) {
+      print('Image processing error: $e');
       throw Exception('Image processing error: ${e.toString()}');
     }
   }
@@ -629,9 +502,15 @@ class ApiService {
   static Future<ProcessingResult> processImagesWeb(List<PlatformFile> webFiles,
       {int maxConcurrent = 5}) async {
     try {
-      final uri = Uri.parse(
-          '$mediaApiUrl/process-images?max_concurrent=$maxConcurrent');
+      final uri = Uri.parse('$mediaApiUrl/process-images');
       final request = http.MultipartRequest('POST', uri);
+
+      // Add max_concurrent parameter
+      request.fields['max_concurrent'] = maxConcurrent.toString();
+      
+      // Generate session ID for tracking
+      final sessionId = _generateSessionId();
+      request.fields['session_id'] = sessionId;
 
       for (var webFile in webFiles) {
         request.files.add(
@@ -643,8 +522,13 @@ class ApiService {
         );
       }
 
-      request.headers.addAll({'Accept': 'application/json'});
-      final streamedResponse =
+      request.headers.addAll({
+        'Accept': 'application/json',
+        'User-Agent': 'Bookey-Flutter-App/1.0',
+      });
+
+      print('Sending web images to unified API: $mediaApiUrl/process-images');
+      final streamedResponse = 
           await request.send().timeout(Duration(seconds: timeoutSeconds));
       final response = await http.Response.fromStream(streamedResponse);
 
@@ -659,8 +543,7 @@ class ApiService {
           throw Exception('Received null response from server');
         }
 
-        final mediaResult = MediaProcessingResult.fromJson(jsonData);
-        return ProcessingResult.fromMediaProcessingResult(mediaResult);
+        return ProcessingResult.fromNewApiResponse(jsonData);
       } else {
         final errorData = json.decode(response.body);
         throw Exception(errorData['detail'] ?? 'Failed to process images');
@@ -674,42 +557,32 @@ class ApiService {
   static Future<ProcessingResult> processCameraImages(List<String> base64Images,
       {int maxConcurrent = 5}) async {
     try {
-      final uri = Uri.parse(
-          '$mediaApiUrl/camera-capture?max_concurrent=$maxConcurrent');
+      final uri = Uri.parse('$mediaApiUrl/camera-capture');
+      
+      // Create form data
+      final Map<String, dynamic> formData = {
+        'max_concurrent': maxConcurrent.toString(),
+        'session_id': _generateSessionId(),
+      };
+      
+      // Add images as form field
+      for (int i = 0; i < base64Images.length; i++) {
+        formData['images'] = base64Images;
+      }
+
       final response = await http.post(
         uri,
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
+          'User-Agent': 'Bookey-Flutter-App/1.0',
         },
-        body: {
-          'images': base64Images,
-          'max_concurrent': maxConcurrent.toString()
-        },
+        body: formData,
       ).timeout(Duration(seconds: timeoutSeconds));
 
       if (response.statusCode == 200) {
         final jsonData = json.decode(response.body);
-        // Convert CameraProcessingResponse to MediaProcessingResult
-        final mediaResult = MediaProcessingResult(
-          success: jsonData['success'] ?? false,
-          message: jsonData['message'] ?? '',
-          fileName: 'Camera Images',
-          contentType: 'image',
-          totalItems: jsonData['total_pages'] ?? 0,
-          totalWords: jsonData['total_words'] ?? 0,
-          estimatedReadingTimeMinutes:
-              (jsonData['estimated_reading_time_minutes'] ?? 0.0).toDouble(),
-          pages: jsonData['pages'] != null
-              ? (jsonData['pages'] as List)
-                  .map((p) => MediaPageModel.fromJson(p))
-                  .toList()
-              : null,
-          parts: null,
-          processingTimeSeconds:
-              (jsonData['processing_time_seconds'] ?? 0.0).toDouble(),
-        );
-        return ProcessingResult.fromMediaProcessingResult(mediaResult);
+        return ProcessingResult.fromNewApiResponse(jsonData);
       } else {
         final errorData = json.decode(response.body);
         throw Exception(
@@ -720,7 +593,7 @@ class ApiService {
     }
   }
 
-  static Future<ProcessingResult> processAudio(
+  static Future<ProcessingResult?> processAudio(
       File? file, PlatformFile? webFile,
       {int maxConcurrent = 3}) async {
     try {
@@ -731,9 +604,15 @@ class ApiService {
             'Media processing API is currently unavailable. Please try again later.');
       }
 
-      final uri =
-          Uri.parse('$mediaApiUrl/process-audio?max_concurrent=$maxConcurrent');
+      final uri = Uri.parse('$mediaApiUrl/process-audio');
       final request = http.MultipartRequest('POST', uri);
+
+      // Add max_concurrent parameter (not really used for audio but API expects it)
+      request.fields['max_concurrent'] = maxConcurrent.toString();
+      
+      // Generate session ID for tracking
+      final sessionId = _generateSessionId();
+      request.fields['session_id'] = sessionId;
 
       if (kIsWeb && webFile != null) {
         // Check file size for web
@@ -774,7 +653,7 @@ class ApiService {
       print('Sending audio processing request to: $uri');
 
       final streamedResponse = await request.send().timeout(
-        Duration(seconds: 180), // Reduced timeout for audio processing
+        Duration(seconds: 180), // 3 minutes timeout for audio processing
         onTimeout: () {
           throw Exception(
               'Audio processing timeout. Large files may take several minutes to process.');
@@ -788,8 +667,7 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final jsonData = json.decode(response.body);
-        final mediaResult = MediaProcessingResult.fromJson(jsonData);
-        return ProcessingResult.fromMediaProcessingResult(mediaResult);
+        return ProcessingResult.fromNewApiResponse(jsonData);
       } else if (response.statusCode == 413) {
         throw Exception(
             'Audio file is too large. Please use a smaller file (max 50MB).');
@@ -868,5 +746,12 @@ class ApiService {
     } catch (e) {
       return null;
     }
+  }
+
+  // ================== HELPER METHODS ==================
+
+  static String _generateSessionId() {
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    return 'session_${timestamp}_${timestamp.hashCode.abs().toString().substring(0, 6)}';
   }
 }

@@ -26,7 +26,7 @@ class MyHttpOverrides extends HttpOverrides {
              host.contains('localhost') || 
              host.contains('127.0.0.1') ||
              host.contains('stboo-production.up.railway.app') ||
-             host.contains('imgboo-production.up.railway.app') ||
+             host.contains('imgbooc-production.up.railway.app') ||
              host.contains('bookey-pdf-production.up.railway.app');
     };
     

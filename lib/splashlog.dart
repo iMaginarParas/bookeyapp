@@ -3,7 +3,6 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'main.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -22,15 +21,17 @@ class _SplashScreenState extends State<SplashScreen>
 
   // Auth related variables
   final String baseUrl = 'https://bokauth-production.up.railway.app';
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController otpController = TextEditingController();
+  final TextEditingController _identifierController = TextEditingController();
+  final TextEditingController _otpController = TextEditingController();
   
   bool _isInitializing = true;
   bool _showAuthForm = false;
   bool _isLoading = false;
   bool _showOtpInput = false;
+  bool _isPhoneAuth = false;
   String? _errorMessage;
   String? _successMessage;
+  String? _currentIdentifier;
 
   @override
   void initState() {
@@ -71,44 +72,42 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void dispose() {
     _animationController.dispose();
-    emailController.dispose();
-    otpController.dispose();
+    _identifierController.dispose();
+    _otpController.dispose();
     super.dispose();
   }
 
   Future<void> _checkAuthStatus() async {
     try {
-      // Test API connection
-      await _testApiConnection();
-      
-      // Check for stored authentication
       final prefs = await SharedPreferences.getInstance();
       final accessToken = prefs.getString('access_token');
-      final email = prefs.getString('user_email');
+      final refreshToken = prefs.getString('refresh_token');
       
-      if (accessToken != null && email != null) {
-        // Validate token with backend
-        final isValid = await _validateToken(accessToken);
+      if (accessToken != null && refreshToken != null) {
+        // First try to validate current access token
+        final isAccessTokenValid = await _validateAccessToken(accessToken);
         
-        if (isValid) {
-          // Token is valid, navigate to main screen
+        if (isAccessTokenValid) {
+          // Access token is still valid, proceed to main screen
           await Future.delayed(const Duration(seconds: 3));
           if (mounted) {
-            Navigator.of(context).pushReplacement(
-              PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) => const MainScreen(),
-                transitionDuration: const Duration(milliseconds: 800),
-                transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                  return FadeTransition(opacity: animation, child: child);
-                },
-              ),
-            );
+            _navigateToMainScreen();
           }
           return;
         } else {
-          // Token is invalid, clear stored data
-          await prefs.remove('access_token');
-          await prefs.remove('user_email');
+          // Access token expired, try to refresh
+          final refreshSuccess = await _refreshAccessToken(refreshToken);
+          
+          if (refreshSuccess) {
+            await Future.delayed(const Duration(seconds: 3));
+            if (mounted) {
+              _navigateToMainScreen();
+            }
+            return;
+          } else {
+            // Refresh failed, clear stored tokens
+            await _clearAuthData();
+          }
         }
       }
       
@@ -123,7 +122,6 @@ class _SplashScreenState extends State<SplashScreen>
       
     } catch (e) {
       print('Auth check error: $e');
-      // On error, show auth form after splash
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) {
         setState(() {
@@ -135,28 +133,10 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
-  Future<void> _testApiConnection() async {
-    try {
-      print('Testing API connection...');
-      final response = await http.get(
-        Uri.parse('$baseUrl/'),
-        headers: {'Accept': 'application/json'},
-      ).timeout(const Duration(seconds: 10));
-      
-      print('API Status: ${response.statusCode}');
-      if (response.statusCode == 200) {
-        print('API is working correctly!');
-      }
-    } catch (e) {
-      print('API Connection Error: $e');
-      rethrow;
-    }
-  }
-
-  Future<bool> _validateToken(String token) async {
+  Future<bool> _validateAccessToken(String token) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/auth/verify-token'),
+        Uri.parse('$baseUrl/auth/user'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -170,10 +150,73 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
+  Future<bool> _refreshAccessToken(String refreshToken) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/refresh'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'refresh_token': refreshToken,
+        }),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        
+        // Store new tokens
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('access_token', responseData['access_token']);
+        await prefs.setString('refresh_token', responseData['refresh_token']);
+        
+        print('Tokens refreshed successfully');
+        return true;
+      } else {
+        print('Token refresh failed: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print('Token refresh error: $e');
+      return false;
+    }
+  }
+
+  Future<void> _clearAuthData() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('access_token');
+    await prefs.remove('refresh_token');
+    await prefs.remove('user_data');
+  }
+
+  bool _isValidEmail(String email) {
+    return RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email);
+  }
+
+  bool _isValidPhone(String phone) {
+    // Remove all non-digit characters except +
+    String cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');
+    // Check if it's a valid phone format (10-15 digits, optionally starting with +)
+    return RegExp(r'^\+?\d{10,15}$').hasMatch(cleaned);
+  }
+
   Future<void> _sendOtp() async {
-    if (emailController.text.isEmpty) {
+    final identifier = _identifierController.text.trim();
+    
+    if (identifier.isEmpty) {
       setState(() {
-        _errorMessage = 'Please enter your email address';
+        _errorMessage = 'Please enter your email or phone number';
+      });
+      return;
+    }
+
+    // Determine if it's email or phone
+    bool isEmail = _isValidEmail(identifier);
+    bool isPhone = _isValidPhone(identifier);
+    
+    if (!isEmail && !isPhone) {
+      setState(() {
+        _errorMessage = 'Please enter a valid email address or phone number';
       });
       return;
     }
@@ -182,18 +225,23 @@ class _SplashScreenState extends State<SplashScreen>
       _isLoading = true;
       _errorMessage = null;
       _successMessage = null;
+      _isPhoneAuth = isPhone;
+      _currentIdentifier = identifier;
     });
 
     try {
+      String endpoint = isEmail ? '/auth/email/signin' : '/auth/phone/signin';
+      Map<String, dynamic> requestBody = isEmail 
+          ? {'email': identifier}
+          : {'phone': identifier};
+
       final response = await http.post(
-        Uri.parse('$baseUrl/auth/send-otp'),
+        Uri.parse('$baseUrl$endpoint'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: json.encode({
-          'email': emailController.text.trim(),
-        }),
+        body: json.encode(requestBody),
       ).timeout(const Duration(seconds: 30));
 
       final responseData = json.decode(response.body);
@@ -201,7 +249,8 @@ class _SplashScreenState extends State<SplashScreen>
       if (response.statusCode == 200) {
         setState(() {
           _showOtpInput = true;
-          _successMessage = responseData['message'] ?? 'OTP sent successfully!';
+          _successMessage = responseData['message'] ?? 
+              (isEmail ? 'OTP sent to your email!' : 'OTP sent to your phone!');
         });
       } else {
         setState(() {
@@ -210,7 +259,7 @@ class _SplashScreenState extends State<SplashScreen>
       }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Network error: $e';
+        _errorMessage = 'Network error: ${e.toString()}';
       });
     } finally {
       setState(() {
@@ -220,9 +269,16 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _verifyOtp() async {
-    if (otpController.text.isEmpty) {
+    if (_otpController.text.isEmpty) {
       setState(() {
         _errorMessage = 'Please enter the OTP code';
+      });
+      return;
+    }
+
+    if (_currentIdentifier == null) {
+      setState(() {
+        _errorMessage = 'Session expired. Please start again.';
       });
       return;
     }
@@ -233,16 +289,24 @@ class _SplashScreenState extends State<SplashScreen>
     });
 
     try {
+      Map<String, dynamic> requestBody = {
+        'token': _otpController.text.trim(),
+      };
+
+      if (_isPhoneAuth) {
+        requestBody['phone'] = _currentIdentifier;
+      } else {
+        requestBody['email'] = _currentIdentifier;
+      }
+
       final response = await http.post(
         Uri.parse('$baseUrl/auth/verify-otp'),
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
-        body: json.encode({
-          'email': emailController.text.trim(),
-          'token': otpController.text.trim(),
-        }),
-      );
+        body: json.encode(requestBody),
+      ).timeout(const Duration(seconds: 30));
 
       final responseData = json.decode(response.body);
 
@@ -250,20 +314,19 @@ class _SplashScreenState extends State<SplashScreen>
         // Store authentication data
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('access_token', responseData['access_token'] ?? '');
-        await prefs.setString('user_email', responseData['email'] ?? emailController.text);
+        await prefs.setString('refresh_token', responseData['refresh_token'] ?? '');
+        
+        // Store user data
+        Map<String, dynamic> userData = {
+          'user_id': responseData['user_id'],
+          'email': responseData['email'],
+          'phone': responseData['phone'],
+        };
+        await prefs.setString('user_data', json.encode(userData));
         
         // Navigate to main screen
         if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            PageRouteBuilder(
-              pageBuilder: (context, animation, secondaryAnimation) => const MainScreen(),
-              transitionDuration: const Duration(milliseconds: 800),
-              transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                return FadeTransition(opacity: animation, child: child);
-              },
-            ),
-          );
+          _navigateToMainScreen();
         }
       } else {
         setState(() {
@@ -282,6 +345,13 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _resendOtp() async {
+    if (_currentIdentifier == null) {
+      setState(() {
+        _errorMessage = 'Session expired. Please start again.';
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -289,21 +359,24 @@ class _SplashScreenState extends State<SplashScreen>
     });
 
     try {
+      Map<String, dynamic> requestBody = _isPhoneAuth 
+          ? {'phone': _currentIdentifier}
+          : {'email': _currentIdentifier};
+
       final response = await http.post(
         Uri.parse('$baseUrl/auth/resend-otp'),
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
-        body: json.encode({
-          'email': emailController.text.trim(),
-        }),
-      );
+        body: json.encode(requestBody),
+      ).timeout(const Duration(seconds: 30));
 
       final responseData = json.decode(response.body);
 
       if (response.statusCode == 200) {
         setState(() {
-          _successMessage = 'New OTP sent to your email!';
+          _successMessage = responseData['message'] ?? 'New OTP sent!';
         });
       } else {
         setState(() {
@@ -321,49 +394,16 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
-  Future<void> _signInWithGoogle() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/auth/google/url'),
-        headers: {
-          'Content-Type': 'application/json',
+  void _navigateToMainScreen() {
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => const MainScreen(),
+        transitionDuration: const Duration(milliseconds: 800),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
         },
-      );
-
-      final responseData = json.decode(response.body);
-
-      if (response.statusCode == 200) {
-        final String googleUrl = responseData['url'];
-        
-        if (await canLaunchUrl(Uri.parse(googleUrl))) {
-          await launchUrl(
-            Uri.parse(googleUrl),
-            mode: LaunchMode.externalApplication,
-          );
-        } else {
-          setState(() {
-            _errorMessage = 'Could not launch Google sign-in';
-          });
-        }
-      } else {
-        setState(() {
-          _errorMessage = responseData['detail'] ?? 'Failed to get Google sign-in URL';
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'Network error. Please try again.';
-      });
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
+      ),
+    );
   }
 
   void _resetForm() {
@@ -371,7 +411,9 @@ class _SplashScreenState extends State<SplashScreen>
       _showOtpInput = false;
       _errorMessage = null;
       _successMessage = null;
-      otpController.clear();
+      _currentIdentifier = null;
+      _isPhoneAuth = false;
+      _otpController.clear();
     });
   }
 
@@ -593,7 +635,7 @@ class _SplashScreenState extends State<SplashScreen>
         
         // Subtitle
         const Text(
-          'Sign in to continue creating amazing videos with AI',
+          'Sign in with your email or phone number to continue',
           style: TextStyle(
             fontSize: 16,
             color: Color(0xFF6B7280),
@@ -695,21 +737,21 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
         
-        // Email Input
+        // Email/Phone Input
         _buildTextField(
-          controller: emailController,
-          label: 'Email address',
-          hint: 'Enter your email',
+          controller: _identifierController,
+          label: 'Email or Phone Number',
+          hint: 'Enter your email or phone number',
           keyboardType: TextInputType.emailAddress,
           enabled: !_showOtpInput && !_isLoading,
-          prefixIcon: Icons.mail_outline,
+          prefixIcon: Icons.alternate_email,
         ),
         
         if (_showOtpInput) ...[
           const SizedBox(height: 20),
           _buildTextField(
-            controller: otpController,
-            label: 'Verification code',
+            controller: _otpController,
+            label: 'Verification Code',
             hint: 'Enter 6-digit code',
             keyboardType: TextInputType.number,
             enabled: !_isLoading,
@@ -727,14 +769,6 @@ class _SplashScreenState extends State<SplashScreen>
         if (_showOtpInput) ...[
           const SizedBox(height: 16),
           _buildSecondaryActions(),
-        ],
-        
-        // Google Sign In (only show when not in OTP mode)
-        if (!_showOtpInput) ...[
-          const SizedBox(height: 32),
-          _buildDivider(),
-          const SizedBox(height: 32),
-          _buildGoogleButton(),
         ],
       ],
     );
@@ -805,15 +839,15 @@ class _SplashScreenState extends State<SplashScreen>
               fillColor: const Color(0xFFF9FAFB),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(
-                  color: const Color(0xFFE5E7EB),
+                borderSide: const BorderSide(
+                  color: Color(0xFFE5E7EB),
                   width: 1,
                 ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(
-                  color: const Color(0xFFE5E7EB),
+                borderSide: const BorderSide(
+                  color: Color(0xFFE5E7EB),
                   width: 1,
                 ),
               ),
@@ -885,7 +919,7 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               )
             : Text(
-                _showOtpInput ? 'Verify & Continue' : 'Send verification code',
+                _showOtpInput ? 'Verify & Continue' : 'Send Verification Code',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -907,7 +941,7 @@ class _SplashScreenState extends State<SplashScreen>
               padding: const EdgeInsets.symmetric(vertical: 12),
             ),
             child: const Text(
-              'Resend code',
+              'Resend Code',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
@@ -927,9 +961,9 @@ class _SplashScreenState extends State<SplashScreen>
               foregroundColor: const Color(0xFF6B7280),
               padding: const EdgeInsets.symmetric(vertical: 12),
             ),
-            child: const Text(
-              'Change email',
-              style: TextStyle(
+            child: Text(
+              _isPhoneAuth ? 'Change Phone' : 'Change Email',
+              style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),
@@ -940,100 +974,12 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 
-  Widget _buildDivider() {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            height: 1,
-            color: const Color(0xFFE5E7EB),
-          ),
-        ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'or',
-            style: TextStyle(
-              color: Color(0xFF9CA3AF),
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: const Color(0xFFE5E7EB),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGoogleButton() {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ElevatedButton.icon(
-        onPressed: _isLoading ? null : _signInWithGoogle,
-        icon: Container(
-          width: 20,
-          height: 20,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(4),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: const Center(
-            child: Text(
-              'G',
-              style: TextStyle(
-                color: Color(0xFFDB4437),
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-        label: const Text('Continue with Google'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.white,
-          foregroundColor: const Color(0xFF374151),
-          elevation: 0,
-          shadowColor: Colors.transparent,
-          side: const BorderSide(
-            color: Color(0xFFE5E7EB),
-            width: 1,
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 18),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildFooter() {
-    return Center(
+    return const Center(
       child: Text(
-        'Secure authentication • Privacy protected',
+        'Secure OTP authentication • Privacy protected',
         style: TextStyle(
-          color: const Color(0xFF9CA3AF),
+          color: Color(0xFF9CA3AF),
           fontSize: 12,
           fontWeight: FontWeight.w400,
           letterSpacing: 0.5,
