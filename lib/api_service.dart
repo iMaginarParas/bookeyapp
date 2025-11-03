@@ -265,8 +265,8 @@ class ApiService {
   // Existing PDF processing endpoints (unchanged)
   static const String baseUrl = 'https://bookey-pdf-production.up.railway.app';
 
-  // Story API (unchanged)
-  static const String storyApiUrl = 'https://stboo-production.up.railway.app';
+  // Story API (FIXED - correct endpoint)
+  static const String storyApiUrl = 'https://imgbooc-production.up.railway.app/';
   
   // NEW: Unified Media API endpoint
   static const String mediaApiUrl = 'https://imgbooc-production.up.railway.app';
@@ -367,40 +367,117 @@ class ApiService {
 
   static Future<ProcessingResult> generateStory(StoryRequest request) async {
     try {
+      print('🚀 Starting story generation...');
+      print('📡 Story API URL: $storyApiUrl');
+      
       final uri = Uri.parse('$storyApiUrl/generate-story');
+      print('🎯 Full endpoint: $uri');
+      print('📦 Request payload: ${json.encode(request.toJson())}');
+      
+      // Check API health first
+      print('🔍 Checking story API health...');
+      final healthCheck = await checkStoryApiHealth();
+      print('❤️ Story API health status: $healthCheck');
+      
       final response = await http
           .post(
             uri,
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
+              'User-Agent': 'Bookey-Flutter-App/1.0',
             },
             body: json.encode(request.toJson()),
           )
           .timeout(Duration(seconds: timeoutSeconds));
 
+      print('📊 Response status code: ${response.statusCode}');
+      print('📋 Response headers: ${response.headers}');
+      print('📄 Response body preview: ${response.body.length > 500 ? response.body.substring(0, 500) + "..." : response.body}');
+
       if (response.statusCode == 200) {
-        final jsonData = json.decode(response.body);
-        final storyResponse = StoryResponse.fromJson(jsonData);
-        return ProcessingResult.fromStoryResponse(storyResponse);
+        try {
+          final jsonData = json.decode(response.body);
+          print('✅ Successfully parsed JSON response');
+          final storyResponse = StoryResponse.fromJson(jsonData);
+          print('📚 Story generated successfully: ${storyResponse.title}');
+          return ProcessingResult.fromStoryResponse(storyResponse);
+        } catch (parseError) {
+          print('❌ JSON parsing error: $parseError');
+          throw Exception('Failed to parse story response: $parseError');
+        }
       } else {
-        final errorData = json.decode(response.body);
-        throw Exception(errorData['detail'] ?? 'Failed to generate story');
+        print('❌ API request failed with status: ${response.statusCode}');
+        try {
+          final errorData = json.decode(response.body);
+          print('📝 Error details: $errorData');
+          throw Exception(errorData['detail'] ?? errorData['message'] ?? 'Story generation failed with status ${response.statusCode}');
+        } catch (parseError) {
+          print('❌ Could not parse error response: $parseError');
+          throw Exception('Story generation failed: HTTP ${response.statusCode} - ${response.body}');
+        }
       }
+    } on TimeoutException catch (e) {
+      print('⏰ Request timeout: $e');
+      throw Exception('Request timed out after $timeoutSeconds seconds. Please check your internet connection and try again.');
+    } on SocketException catch (e) {
+      print('🌐 Network error: $e');
+      throw Exception('Network connection failed. Please check your internet connection and try again.');
+    } on FormatException catch (e) {
+      print('📋 Format error: $e');
+      throw Exception('Invalid response format from server: $e');
     } catch (e) {
+      print('💥 Unexpected error: $e');
+      print('🔍 Error type: ${e.runtimeType}');
       throw Exception('Story generation error: ${e.toString()}');
     }
   }
 
   static Future<bool> checkStoryApiHealth() async {
     try {
+      print('🔍 Checking story API health at: $storyApiUrl/health');
       final response = await http.get(
         Uri.parse('$storyApiUrl/health'),
-        headers: {'Accept': 'application/json'},
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Bookey-Flutter-App/1.0',
+        },
       ).timeout(Duration(seconds: 10));
-      return response.statusCode == 200;
+      
+      print('❤️ Health check response: ${response.statusCode}');
+      final isHealthy = response.statusCode == 200;
+      
+      if (isHealthy) {
+        print('✅ Story API is healthy');
+        print('📄 Health response: ${response.body}');
+      } else {
+        print('❌ Story API is unhealthy');
+        print('📄 Error response: ${response.body}');
+      }
+      
+      return isHealthy;
     } catch (e) {
+      print('💥 Health check failed: $e');
       return false;
+    }
+  }
+
+  /// Debug method to test story generation with a simple request
+  static Future<String> debugStoryGeneration() async {
+    try {
+      print('🧪 Running debug story generation test...');
+      
+      final testRequest = StoryRequest(
+        title: 'Debug Test',
+        subject: 'A simple test story',
+        genre: 'Fantasy',
+        duration: 'Short (5-10 minutes read)',
+      );
+      
+      final result = await generateStory(testRequest);
+      return 'Debug test successful: ${result.message} - ${result.totalWords} words generated';
+    } catch (e) {
+      return 'Debug test failed: $e';
     }
   }
 

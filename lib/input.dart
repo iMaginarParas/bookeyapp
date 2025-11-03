@@ -29,6 +29,16 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
   bool _isGenerating = false;
   int _wordCount = 0;
 
+  // Staged loading state
+  bool _showStagedLoading = false;
+  int _currentStage = 0;
+  final List<String> _storyStages = [
+    'Analyzing your story requirements',
+    'Generating creative content with AI',
+    'Structuring and formatting story',
+    'Finalizing your masterpiece'
+  ];
+
   List<Map<String, String>> _genres = [
     {'value': 'Action/Adventure', 'label': 'Action/Adventure'},
     {'value': 'Comedy', 'label': 'Comedy'},
@@ -151,7 +161,12 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
 
     setState(() {
       _isGenerating = true;
+      _showStagedLoading = true;
+      _currentStage = 0;
     });
+
+    // Start the staged loading animation
+    _startStagedLoading();
 
     try {
       final storyRequest = StoryRequest(
@@ -170,8 +185,11 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
       final result = await ApiService.generateStory(storyRequest);
 
       if (result.success) {
+        // Complete all stages
+        await _completeAllStages();
+        
         widget.onStoryGenerated(result);
-        _showSnackBar('Story generated successfully', isError: false);
+        _showSnackBar('Story generated successfully! Navigating to Processing...', isError: false);
         _clearForm();
       } else {
         throw Exception(result.message);
@@ -181,8 +199,35 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
     } finally {
       setState(() {
         _isGenerating = false;
+        _showStagedLoading = false;
+        _currentStage = 0;
       });
     }
+  }
+
+  void _startStagedLoading() {
+    Timer.periodic(Duration(milliseconds: 800), (timer) {
+      if (!_showStagedLoading || _currentStage >= _storyStages.length) {
+        timer.cancel();
+        return;
+      }
+      
+      setState(() {
+        _currentStage++;
+      });
+    });
+  }
+
+  Future<void> _completeAllStages() async {
+    while (_currentStage < _storyStages.length) {
+      await Future.delayed(Duration(milliseconds: 300));
+      if (mounted) {
+        setState(() {
+          _currentStage++;
+        });
+      }
+    }
+    await Future.delayed(Duration(milliseconds: 500)); // Final pause before navigation
   }
 
   void _clearForm() {
@@ -240,9 +285,19 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
             children: [
               _buildHeader(),
               const SizedBox(height: 20),
-              _buildFormLayout(),
-              const SizedBox(height: 20),
-              _buildGenerateSection(),
+              if (_showStagedLoading)
+                StagedLoadingWidget(
+                  stages: _storyStages,
+                  currentStage: _currentStage,
+                  title: 'Creating Your Story',
+                  icon: Icons.auto_awesome,
+                  primaryColor: const Color(0xFF6366F1),
+                )
+              else ...[
+                _buildFormLayout(),
+                const SizedBox(height: 20),
+                _buildGenerateSection(),
+              ],
             ],
           ),
         ),
@@ -483,6 +538,7 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
               fontWeight: FontWeight.w500,
             ),
             dropdownColor: Colors.white,
+            isExpanded: true, // Fix overflow by expanding dropdown
             items: items.map((item) {
               return DropdownMenuItem<String>(
                 value: item['value'],
@@ -492,6 +548,7 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
                     color: Color(0xFF2D2D2D),
                     fontSize: 14,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               );
             }).toList(),
@@ -578,7 +635,293 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
   }
 }
 
-// FIXED AUDIO UPLOAD WIDGET - Prevents duplicate requests and properly handles polling
+// STAGED LOADING WIDGET - The star of the show! 🌟
+class StagedLoadingWidget extends StatefulWidget {
+  final List<String> stages;
+  final int currentStage;
+  final String title;
+  final IconData icon;
+  final Color primaryColor;
+
+  const StagedLoadingWidget({
+    super.key,
+    required this.stages,
+    required this.currentStage,
+    required this.title,
+    required this.icon,
+    required this.primaryColor,
+  });
+
+  @override
+  State<StagedLoadingWidget> createState() => _StagedLoadingWidgetState();
+}
+
+class _StagedLoadingWidgetState extends State<StagedLoadingWidget>
+    with TickerProviderStateMixin {
+  late AnimationController _pulseController;
+  late AnimationController _checkController;
+  late Animation<double> _pulseAnimation;
+  late Animation<double> _checkAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    );
+    
+    _checkController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+    
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+    
+    _checkAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _checkController, curve: Curves.elasticOut),
+    );
+    
+    _pulseController.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _checkController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(StagedLoadingWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.currentStage > oldWidget.currentStage) {
+      _checkController.forward().then((_) {
+        _checkController.reset();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            widget.primaryColor.withOpacity(0.1),
+            widget.primaryColor.withOpacity(0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: widget.primaryColor.withOpacity(0.2),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Header with animated icon
+          AnimatedBuilder(
+            animation: _pulseAnimation,
+            builder: (context, child) {
+              return Transform.scale(
+                scale: _pulseAnimation.value,
+                child: Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: widget.primaryColor,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: widget.primaryColor.withOpacity(0.3),
+                        blurRadius: 20,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    widget.icon,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 20),
+          
+          // Title
+          Text(
+            widget.title,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF2D2D2D),
+            ),
+          ),
+          const SizedBox(height: 8),
+          
+          Text(
+            'Please wait while we process your request...',
+            style: TextStyle(
+              fontSize: 14,
+              color: const Color(0xFF8B7355).withOpacity(0.8),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 32),
+          
+          // Progress stages
+          Column(
+            children: List.generate(widget.stages.length, (index) {
+              final isCompleted = index < widget.currentStage;
+              final isCurrent = index == widget.currentStage - 1;
+              final isPending = index >= widget.currentStage;
+              
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Row(
+                  children: [
+                    // Step indicator
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: isCompleted 
+                            ? const Color(0xFF10B981)
+                            : isCurrent 
+                                ? widget.primaryColor
+                                : const Color(0xFFE5E7EB),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isCompleted 
+                              ? const Color(0xFF10B981)
+                              : isCurrent 
+                                  ? widget.primaryColor
+                                  : const Color(0xFFD1D5DB),
+                          width: 2,
+                        ),
+                      ),
+                      child: isCompleted
+                          ? ScaleTransition(
+                              scale: _checkAnimation,
+                              child: const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            )
+                          : isCurrent
+                              ? SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF9CA3AF),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                    ),
+                    const SizedBox(width: 16),
+                    
+                    // Step text
+                    Expanded(
+                      child: AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 300),
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: isCompleted || isCurrent 
+                              ? FontWeight.w600 
+                              : FontWeight.w400,
+                          color: isCompleted
+                              ? const Color(0xFF10B981)
+                              : isCurrent
+                                  ? widget.primaryColor
+                                  : const Color(0xFF9CA3AF),
+                        ),
+                        child: Text(widget.stages[index]),
+                      ),
+                    ),
+                    
+                    // Completion indicator
+                    if (isCompleted)
+                      ScaleTransition(
+                        scale: _checkAnimation,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.check_circle,
+                            color: Color(0xFF10B981),
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            }),
+          ),
+          
+          const SizedBox(height: 24),
+          
+          // Progress bar
+          Container(
+            height: 8,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE5E7EB),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: widget.currentStage / widget.stages.length,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 500),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [widget.primaryColor, const Color(0xFF10B981)],
+                  ),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Progress text
+          Text(
+            '${widget.currentStage}/${widget.stages.length} steps completed',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: widget.primaryColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// AUDIO UPLOAD WIDGET with Staged Loading
 class AudioUploadWidget extends StatefulWidget {
   final Function(ProcessingResult) onAudioProcessed;
 
@@ -596,8 +939,17 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
   bool _isPickingFile = false;
   Timer? _jobPollingTimer;
   String? _currentJobId;
-  String _processingStatus = '';
-  bool _requestInProgress = false; // Prevent duplicate requests
+  bool _requestInProgress = false;
+  
+  // Staged loading state
+  bool _showStagedLoading = false;
+  int _currentStage = 0;
+  final List<String> _audioStages = [
+    'Uploading audio file to cloud',
+    'Transcribing with AssemblyAI',
+    'Cleaning text with AI',
+    'Finalizing transcription'
+  ];
   
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
@@ -633,7 +985,7 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
     });
 
     try {
-      await Future.delayed(const Duration(milliseconds: 200)); // Longer delay to prevent rapid calls
+      await Future.delayed(const Duration(milliseconds: 200));
       
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.audio,
@@ -672,7 +1024,6 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
       return;
     }
 
-    // Prevent duplicate requests
     if (_requestInProgress) {
       print('Audio processing request already in progress, ignoring');
       return;
@@ -681,11 +1032,14 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
     setState(() {
       _requestInProgress = true;
       _isProcessing = true;
-      _processingStatus = 'Starting audio processing...';
+      _showStagedLoading = true;
+      _currentStage = 0;
     });
 
+    // Start the staged loading animation
+    _startStagedLoading();
+
     try {
-      // Start background job using your actual backend
       final jobInfo = await BackgroundJobApiService.processAudio(
         _selectedFile, 
         _selectedWebFile,
@@ -693,13 +1047,7 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
 
       if (jobInfo != null && jobInfo['success'] == true) {
         _currentJobId = jobInfo['job_id'];
-        setState(() {
-          _processingStatus = 'Processing started - monitoring progress...';
-        });
-        
         _showSnackBar('Audio processing started! Monitoring progress...', isError: false);
-        
-        // Start polling for job status
         _startJobPolling();
       } else {
         throw Exception(jobInfo?['message'] ?? 'Failed to start audio processing');
@@ -708,28 +1056,34 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
       _showSnackBar('Failed to start audio processing: ${e.toString()}', isError: true);
       setState(() {
         _isProcessing = false;
-        _processingStatus = '';
+        _showStagedLoading = false;
         _requestInProgress = false;
+        _currentStage = 0;
       });
     }
+  }
+
+  void _startStagedLoading() {
+    Timer.periodic(Duration(seconds: 2), (timer) {
+      if (!_showStagedLoading || _currentStage >= _audioStages.length) {
+        timer.cancel();
+        return;
+      }
+      
+      setState(() {
+        _currentStage++;
+      });
+    });
   }
 
   void _startJobPolling() {
     if (_currentJobId == null) return;
     
-    print('Starting job polling for job ID: $_currentJobId');
-    
     _jobPollingTimer = Timer.periodic(Duration(seconds: 5), (timer) async {
       try {
-        print('Polling job status for: $_currentJobId');
         final status = await BackgroundJobApiService.getJobStatus(_currentJobId!);
         
         if (status != null) {
-          print('Job status received: ${status['status']}');
-          setState(() {
-            _processingStatus = _getStatusMessage(status);
-          });
-          
           if (status['status'] == 'completed') {
             timer.cancel();
             await _handleJobCompletion(status);
@@ -737,80 +1091,69 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
             timer.cancel();
             _handleJobFailure(status);
           }
-        } else {
-          print('No status received for job: $_currentJobId');
         }
       } catch (e) {
         print('Error polling job status: $e');
-        // Don't cancel timer on error, keep trying
       }
     });
   }
 
-  String _getStatusMessage(Map<String, dynamic> status) {
-    switch (status['status']) {
-      case 'pending':
-        return 'Audio processing queued...';
-      case 'processing':
-        return 'Transcribing audio with AssemblyAI...';
-      case 'completed':
-        return 'Audio processing completed!';
-      case 'failed':
-        return 'Audio processing failed';
-      default:
-        return 'Processing audio...';
-    }
-  }
-
   Future<void> _handleJobCompletion(Map<String, dynamic> status) async {
     try {
-      print('Job completed! Status: $status');
+      // Complete all stages quickly
+      await _completeAllStages();
+      
       final result = status['result'];
       if (result != null) {
-        // Convert to ProcessingResult format
         final processingResult = _convertJobResultToProcessingResult(result);
-        
         widget.onAudioProcessed(processingResult);
-        _showSnackBar('Audio processed successfully! Check Processing tab', isError: false);
+        _showSnackBar('Audio processed successfully! Navigating to Processing...', isError: false);
         
-        // Clear the selected file after successful processing
         setState(() {
           _selectedFile = null;
           _selectedWebFile = null;
           _isProcessing = false;
-          _processingStatus = '';
+          _showStagedLoading = false;
           _currentJobId = null;
           _requestInProgress = false;
+          _currentStage = 0;
         });
       } else {
-        // Try to get results from session_id
         final sessionId = status['session_id'];
         if (sessionId != null) {
           final results = await BackgroundJobApiService.getResults(sessionId);
           if (results != null) {
             final processingResult = _convertJobResultToProcessingResult(results);
             widget.onAudioProcessed(processingResult);
-            _showSnackBar('Audio processed successfully! Check Processing tab', isError: false);
+            _showSnackBar('Audio processed successfully! Navigating to Processing...', isError: false);
             
             setState(() {
               _selectedFile = null;
               _selectedWebFile = null;
               _isProcessing = false;
-              _processingStatus = '';
+              _showStagedLoading = false;
               _currentJobId = null;
               _requestInProgress = false;
+              _currentStage = 0;
             });
-          } else {
-            throw Exception('No results found for completed job');
           }
-        } else {
-          throw Exception('Job completed but no results available');
         }
       }
     } catch (e) {
-      print('Error handling job completion: $e');
       _handleJobFailure({'error_message': e.toString()});
     }
+  }
+
+  Future<void> _completeAllStages() async {
+    while (_currentStage < _audioStages.length) {
+      await Future.delayed(Duration(milliseconds: 300));
+      if (mounted) {
+        setState(() {
+          _currentStage++;
+        });
+      }
+    }
+    await Future.delayed(Duration(milliseconds: 500));
   }
 
   void _handleJobFailure(Map<String, dynamic> status) {
@@ -819,9 +1162,10 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
     
     setState(() {
       _isProcessing = false;
-      _processingStatus = '';
+      _showStagedLoading = false;
       _currentJobId = null;
       _requestInProgress = false;
+      _currentStage = 0;
     });
   }
 
@@ -894,139 +1238,109 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
           ),
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min, // Prevent overflow
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: hasFile ? const Color(0xFF10B981) : const Color(0xFF8B7355),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: (hasFile
-                            ? const Color(0xFF10B981)
-                            : const Color(0xFF8B7355))
-                        .withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Icon(
-                hasFile ? Icons.check_circle : Icons.audiotrack,
-                color: Colors.white,
-                size: 28,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              hasFile ? 'Audio File Selected!' : 'Upload Audio',
-              style: const TextStyle(
-                color: Color(0xFF2D2D2D),
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              hasFile
-                  ? 'Ready for AssemblyAI transcription'
-                  : 'Upload audio for AI transcription',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFF8B7355),
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
-                height: 1.4,
-              ),
-            ),
-            
-            // Show processing status
-            if (_isProcessing && _processingStatus.isNotEmpty) ...[
-              const SizedBox(height: 16),
+            if (_showStagedLoading)
+              StagedLoadingWidget(
+                stages: _audioStages,
+                currentStage: _currentStage,
+                title: 'Processing Audio',
+                icon: Icons.audiotrack,
+                primaryColor: const Color(0xFF3B82F6),
+              )
+            else ...[
               Container(
-                padding: const EdgeInsets.all(12),
+                width: 60,
+                height: 60,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF3B82F6).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0xFF3B82F6).withOpacity(0.3),
-                  ),
+                  color: hasFile ? const Color(0xFF10B981) : const Color(0xFF8B7355),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: (hasFile
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFF8B7355))
+                          .withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min, // Prevent overflow
+                child: Icon(
+                  hasFile ? Icons.check_circle : Icons.audiotrack,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                hasFile ? 'Audio File Selected!' : 'Upload Audio',
+                style: const TextStyle(
+                  color: Color(0xFF2D2D2D),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                hasFile
+                    ? 'Ready for AssemblyAI transcription'
+                    : 'Upload audio for AI transcription',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF8B7355),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 20),
+              if (!hasFile)
+                _buildActionButton(
+                  text: _isPickingFile ? 'Selecting...' : 'Choose Audio File',
+                  icon: _isPickingFile ? null : Icons.upload_file,
+                  onPressed: _isPickingFile ? null : _pickAudioFile,
+                  isPrimary: true,
+                  isLoading: _isPickingFile,
+                ),
+              if (hasFile) ...[
+                _buildSelectedFileCard(),
+                const SizedBox(height: 16),
+                Row(
                   children: [
-                    const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
+                    Expanded(
+                      child: _buildActionButton(
+                        text: 'Change File',
+                        icon: Icons.swap_horiz,
+                        onPressed: _isProcessing ? null : () {
+                          _jobPollingTimer?.cancel();
+                          setState(() {
+                            _selectedFile = null;
+                            _selectedWebFile = null;
+                            _isProcessing = false;
+                            _showStagedLoading = false;
+                            _currentJobId = null;
+                            _requestInProgress = false;
+                            _currentStage = 0;
+                          });
+                        },
+                        isPrimary: false,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Flexible( // Use Flexible instead of Expanded
-                      child: Text(
-                        _processingStatus,
-                        style: const TextStyle(
-                          color: Color(0xFF3B82F6),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: _buildActionButton(
+                        text: _isProcessing ? 'Processing...' : 'Process Audio',
+                        icon: _isProcessing ? null : Icons.auto_awesome,
+                        onPressed: _isProcessing ? null : _processAudio,
+                        isPrimary: true,
+                        isLoading: _isProcessing,
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-            
-            const SizedBox(height: 20),
-            if (!hasFile)
-              _buildActionButton(
-                text: _isPickingFile ? 'Selecting...' : 'Choose Audio File',
-                icon: _isPickingFile ? null : Icons.upload_file,
-                onPressed: _isPickingFile ? null : _pickAudioFile,
-                isPrimary: true,
-                isLoading: _isPickingFile,
-              ),
-            if (hasFile) ...[
-              _buildSelectedFileCard(),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildActionButton(
-                      text: 'Change File',
-                      icon: Icons.swap_horiz,
-                      onPressed: _isProcessing ? null : () {
-                        _jobPollingTimer?.cancel();
-                        setState(() {
-                          _selectedFile = null;
-                          _selectedWebFile = null;
-                          _isProcessing = false;
-                          _processingStatus = '';
-                          _currentJobId = null;
-                          _requestInProgress = false;
-                        });
-                      },
-                      isPrimary: false,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: _buildActionButton(
-                      text: _isProcessing ? 'Processing...' : 'Process Audio',
-                      icon: _isProcessing ? null : Icons.auto_awesome,
-                      onPressed: _isProcessing ? null : _processAudio,
-                      isPrimary: true,
-                      isLoading: _isProcessing,
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ],
           ],
         ),
@@ -1153,13 +1467,13 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
               )
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min, // Prevent overflow
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   if (icon != null) ...[
                     Icon(icon, size: 16),
                     const SizedBox(width: 6),
                   ],
-                  Flexible( // Use Flexible instead of expanded
+                  Flexible(
                     child: Text(
                       text,
                       style: const TextStyle(
@@ -1176,7 +1490,7 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
   }
 }
 
-// Enhanced Camera Widget - Same pattern as audio
+// Enhanced Camera Widget with Staged Loading
 class EnhancedCameraWidget extends StatefulWidget {
   final Function(ProcessingResult) onImagesProcessed;
 
@@ -1194,8 +1508,17 @@ class _EnhancedCameraWidgetState extends State<EnhancedCameraWidget>
   bool _isPickingImages = false;
   Timer? _jobPollingTimer;
   String? _currentJobId;
-  String _processingStatus = '';
   bool _requestInProgress = false;
+  
+  // Staged loading state
+  bool _showStagedLoading = false;
+  int _currentStage = 0;
+  final List<String> _imageStages = [
+    'Uploading images to cloud',
+    'Extracting text with OCR',
+    'Cleaning text with AI',
+    'Finalizing results'
+  ];
 
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
@@ -1278,8 +1601,12 @@ class _EnhancedCameraWidgetState extends State<EnhancedCameraWidget>
     setState(() {
       _requestInProgress = true;
       _isProcessing = true;
-      _processingStatus = 'Starting image processing...';
+      _showStagedLoading = true;
+      _currentStage = 0;
     });
+
+    // Start the staged loading animation
+    _startStagedLoading();
 
     try {
       Map<String, dynamic>? jobInfo;
@@ -1298,10 +1625,6 @@ class _EnhancedCameraWidgetState extends State<EnhancedCameraWidget>
 
       if (jobInfo != null && jobInfo['success'] == true) {
         _currentJobId = jobInfo['job_id'];
-        setState(() {
-          _processingStatus = 'Processing started - monitoring progress...';
-        });
-        
         _showSnackBar('Image processing started! Monitoring progress...', isError: false);
         _startJobPolling();
       } else {
@@ -1311,10 +1634,24 @@ class _EnhancedCameraWidgetState extends State<EnhancedCameraWidget>
       _showSnackBar('Failed to start image processing: ${e.toString()}', isError: true);
       setState(() {
         _isProcessing = false;
-        _processingStatus = '';
+        _showStagedLoading = false;
         _requestInProgress = false;
+        _currentStage = 0;
       });
     }
+  }
+
+  void _startStagedLoading() {
+    Timer.periodic(Duration(seconds: 2), (timer) {
+      if (!_showStagedLoading || _currentStage >= _imageStages.length) {
+        timer.cancel();
+        return;
+      }
+      
+      setState(() {
+        _currentStage++;
+      });
+    });
   }
 
   void _startJobPolling() {
@@ -1325,10 +1662,6 @@ class _EnhancedCameraWidgetState extends State<EnhancedCameraWidget>
         final status = await BackgroundJobApiService.getJobStatus(_currentJobId!);
         
         if (status != null) {
-          setState(() {
-            _processingStatus = _getStatusMessage(status);
-          });
-          
           if (status['status'] == 'completed') {
             timer.cancel();
             await _handleJobCompletion(status);
@@ -1343,36 +1676,25 @@ class _EnhancedCameraWidgetState extends State<EnhancedCameraWidget>
     });
   }
 
-  String _getStatusMessage(Map<String, dynamic> status) {
-    switch (status['status']) {
-      case 'pending':
-        return 'Image processing queued...';
-      case 'processing':
-        return 'Extracting text with OCR...';
-      case 'completed':
-        return 'Image processing completed!';
-      case 'failed':
-        return 'Image processing failed';
-      default:
-        return 'Processing images...';
-    }
-  }
-
   Future<void> _handleJobCompletion(Map<String, dynamic> status) async {
     try {
+      // Complete all stages
+      await _completeAllStages();
+      
       final result = status['result'];
       if (result != null) {
         final processingResult = _convertJobResultToProcessingResult(result);
         widget.onImagesProcessed(processingResult);
-        _showSnackBar('Images processed successfully! Check Processing tab', isError: false);
+        _showSnackBar('Images processed successfully! Navigating to Processing...', isError: false);
         
         setState(() {
           _selectedImages = [];
           _selectedWebImages = [];
           _isProcessing = false;
-          _processingStatus = '';
+          _showStagedLoading = false;
           _currentJobId = null;
           _requestInProgress = false;
+          _currentStage = 0;
         });
       } else {
         final sessionId = status['session_id'];
@@ -1381,15 +1703,16 @@ class _EnhancedCameraWidgetState extends State<EnhancedCameraWidget>
           if (results != null) {
             final processingResult = _convertJobResultToProcessingResult(results);
             widget.onImagesProcessed(processingResult);
-            _showSnackBar('Images processed successfully! Check Processing tab', isError: false);
+            _showSnackBar('Images processed successfully! Navigating to Processing...', isError: false);
             
             setState(() {
               _selectedImages = [];
               _selectedWebImages = [];
               _isProcessing = false;
-              _processingStatus = '';
+              _showStagedLoading = false;
               _currentJobId = null;
               _requestInProgress = false;
+              _currentStage = 0;
             });
           }
         }
@@ -1399,15 +1722,28 @@ class _EnhancedCameraWidgetState extends State<EnhancedCameraWidget>
     }
   }
 
+  Future<void> _completeAllStages() async {
+    while (_currentStage < _imageStages.length) {
+      await Future.delayed(Duration(milliseconds: 300));
+      if (mounted) {
+        setState(() {
+          _currentStage++;
+        });
+      }
+    }
+    await Future.delayed(Duration(milliseconds: 500));
+  }
+
   void _handleJobFailure(Map<String, dynamic> status) {
     final errorMessage = status['error_message'] ?? 'Unknown error occurred';
     _showSnackBar('Image processing failed: $errorMessage', isError: true);
     
     setState(() {
       _isProcessing = false;
-      _processingStatus = '';
+      _showStagedLoading = false;
       _currentJobId = null;
       _requestInProgress = false;
+      _currentStage = 0;
     });
   }
 
@@ -1483,134 +1819,105 @@ class _EnhancedCameraWidgetState extends State<EnhancedCameraWidget>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: hasImages ? const Color(0xFF10B981) : const Color(0xFF8B7355),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: (hasImages
-                            ? const Color(0xFF10B981)
-                            : const Color(0xFF8B7355))
-                        .withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Icon(
-                hasImages ? Icons.check_circle : Icons.image,
-                color: Colors.white,
-                size: 28,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              hasImages ? '$imageCount Image(s) Selected!' : 'Upload Images',
-              style: const TextStyle(
-                color: Color(0xFF2D2D2D),
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              hasImages
-                  ? 'Ready to extract text with AI OCR'
-                  : 'Upload images for AI text extraction',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFF8B7355),
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
-                height: 1.4,
-              ),
-            ),
-            
-            if (_isProcessing && _processingStatus.isNotEmpty) ...[
-              const SizedBox(height: 16),
+            if (_showStagedLoading)
+              StagedLoadingWidget(
+                stages: _imageStages,
+                currentStage: _currentStage,
+                title: 'Processing Images',
+                icon: Icons.image,
+                primaryColor: const Color(0xFF10B981),
+              )
+            else ...[
               Container(
-                padding: const EdgeInsets.all(12),
+                width: 60,
+                height: 60,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF3B82F6).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0xFF3B82F6).withOpacity(0.3),
-                  ),
+                  color: hasImages ? const Color(0xFF10B981) : const Color(0xFF8B7355),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: (hasImages
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFF8B7355))
+                          .withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+                child: Icon(
+                  hasImages ? Icons.check_circle : Icons.image,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                hasImages ? '$imageCount Image(s) Selected!' : 'Upload Images',
+                style: const TextStyle(
+                  color: Color(0xFF2D2D2D),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                hasImages
+                    ? 'Ready to extract text with AI OCR'
+                    : 'Upload images for AI text extraction',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF8B7355),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 20),
+              if (!hasImages)
+                _buildActionButton(
+                  text: _isPickingImages ? 'Selecting...' : 'Choose Images',
+                  icon: _isPickingImages ? null : Icons.upload_file,
+                  onPressed: _isPickingImages ? null : _pickImages,
+                  isPrimary: true,
+                  isLoading: _isPickingImages,
+                ),
+              if (hasImages) ...[
+                Row(
                   children: [
-                    const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
+                    Expanded(
+                      child: _buildActionButton(
+                        text: 'Change Images',
+                        icon: Icons.swap_horiz,
+                        onPressed: _isProcessing ? null : () {
+                          _jobPollingTimer?.cancel();
+                          setState(() {
+                            _selectedImages = [];
+                            _selectedWebImages = [];
+                            _isProcessing = false;
+                            _showStagedLoading = false;
+                            _currentJobId = null;
+                            _requestInProgress = false;
+                            _currentStage = 0;
+                          });
+                        },
+                        isPrimary: false,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        _processingStatus,
-                        style: const TextStyle(
-                          color: Color(0xFF3B82F6),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: _buildActionButton(
+                        text: _isProcessing ? 'Processing...' : 'Extract Text',
+                        icon: _isProcessing ? null : Icons.document_scanner,
+                        onPressed: _isProcessing ? null : _processImages,
+                        isPrimary: true,
+                        isLoading: _isProcessing,
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-            
-            const SizedBox(height: 20),
-            if (!hasImages)
-              _buildActionButton(
-                text: _isPickingImages ? 'Selecting...' : 'Choose Images',
-                icon: _isPickingImages ? null : Icons.upload_file,
-                onPressed: _isPickingImages ? null : _pickImages,
-                isPrimary: true,
-                isLoading: _isPickingImages,
-              ),
-            if (hasImages) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildActionButton(
-                      text: 'Change Images',
-                      icon: Icons.swap_horiz,
-                      onPressed: _isProcessing ? null : () {
-                        _jobPollingTimer?.cancel();
-                        setState(() {
-                          _selectedImages = [];
-                          _selectedWebImages = [];
-                          _isProcessing = false;
-                          _processingStatus = '';
-                          _currentJobId = null;
-                          _requestInProgress = false;
-                        });
-                      },
-                      isPrimary: false,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: _buildActionButton(
-                      text: _isProcessing ? 'Processing...' : 'Extract Text',
-                      icon: _isProcessing ? null : Icons.document_scanner,
-                      onPressed: _isProcessing ? null : _processImages,
-                      isPrimary: true,
-                      isLoading: _isProcessing,
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ],
           ],
         ),
@@ -1694,7 +2001,7 @@ class _EnhancedCameraWidgetState extends State<EnhancedCameraWidget>
   }
 }
 
-// BACKGROUND JOB API SERVICE - Fixed polling and result retrieval
+// BACKGROUND JOB API SERVICE (same as before but included for completeness)
 class BackgroundJobApiService {
   static const String baseUrl = 'https://imgbooc-production.up.railway.app';
 
@@ -1721,12 +2028,8 @@ class BackgroundJobApiService {
         'User-Agent': 'Bookey-Flutter-App/1.0',
       });
 
-      print('Starting background image processing: $baseUrl/process-images');
       final streamedResponse = await request.send().timeout(Duration(seconds: 30));
       final response = await http.Response.fromStream(streamedResponse);
-
-      print('Job start response status: ${response.statusCode}');
-      print('Job start response body: ${response.body}');
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
@@ -1735,7 +2038,6 @@ class BackgroundJobApiService {
         throw Exception(errorData['detail'] ?? 'Failed to start image processing');
       }
     } catch (e) {
-      print('Error starting image processing: $e');
       throw Exception('Failed to start image processing: ${e.toString()}');
     }
   }
@@ -1763,12 +2065,8 @@ class BackgroundJobApiService {
         'User-Agent': 'Bookey-Flutter-App/1.0',
       });
 
-      print('Starting background web image processing: $baseUrl/process-images');
       final streamedResponse = await request.send().timeout(Duration(seconds: 30));
       final response = await http.Response.fromStream(streamedResponse);
-
-      print('Job start response status: ${response.statusCode}');
-      print('Job start response body: ${response.body}');
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
@@ -1777,7 +2075,6 @@ class BackgroundJobApiService {
         throw Exception(errorData['detail'] ?? 'Failed to start image processing');
       }
     } catch (e) {
-      print('Error starting web image processing: $e');
       throw Exception('Failed to start image processing: ${e.toString()}');
     }
   }
@@ -1800,12 +2097,8 @@ class BackgroundJobApiService {
         'User-Agent': 'Bookey-Flutter-App/1.0',
       });
 
-      print('Starting background audio processing: $baseUrl/process-audio');
       final streamedResponse = await request.send().timeout(Duration(seconds: 30));
       final response = await http.Response.fromStream(streamedResponse);
-
-      print('Audio job start response status: ${response.statusCode}');
-      print('Audio job start response body: ${response.body}');
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
@@ -1814,7 +2107,6 @@ class BackgroundJobApiService {
         throw Exception(errorData['detail'] ?? 'Failed to start audio processing');
       }
     } catch (e) {
-      print('Error starting audio processing: $e');
       throw Exception('Failed to start audio processing: ${e.toString()}');
     }
   }
@@ -1829,16 +2121,12 @@ class BackgroundJobApiService {
         },
       ).timeout(Duration(seconds: 10));
 
-      print('Job status response for $jobId: ${response.statusCode} - ${response.body}');
-
       if (response.statusCode == 200) {
         return json.decode(response.body);
       } else {
-        print('Error getting job status: ${response.statusCode} - ${response.body}');
         return null;
       }
     } catch (e) {
-      print('Error polling job status: $e');
       return null;
     }
   }
@@ -1856,11 +2144,9 @@ class BackgroundJobApiService {
       if (response.statusCode == 200) {
         return json.decode(response.body);
       } else {
-        print('Error getting results: ${response.statusCode} - ${response.body}');
         return null;
       }
     } catch (e) {
-      print('Error getting results: $e');
       return null;
     }
   }

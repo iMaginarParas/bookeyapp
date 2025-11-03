@@ -3,10 +3,12 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Import the API service and input components
 import 'api_service.dart';
 import 'input.dart';
+import 'wallet_service.dart';
 
 class HomePage extends StatefulWidget {
   final Function(ProcessingResult) onContentProcessed;
@@ -21,6 +23,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   File? _selectedFile;
   PlatformFile? _selectedWebFile;
   bool _isProcessing = false;
+  int _creditBalance = 0;
+  bool _isLoadingCredits = false;
 
   late AnimationController _fadeController;
   late AnimationController _slideController;
@@ -54,6 +58,34 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
     _fadeController.forward();
     _slideController.forward();
+    
+    // Load credits when page initializes
+    _loadCredits();
+  }
+
+  Future<void> _loadCredits() async {
+    setState(() {
+      _isLoadingCredits = true;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jwtToken = prefs.getString('access_token');
+      
+      if (jwtToken != null) {
+        final walletInfo = await WalletService.getWalletInfo(jwtToken);
+        setState(() {
+          _creditBalance = walletInfo?.creditsBalance ?? 0;
+        });
+      }
+    } catch (e) {
+      print('Error loading credits: $e');
+      // Keep default balance of 0 if there's an error
+    } finally {
+      setState(() {
+        _isLoadingCredits = false;
+      });
+    }
   }
 
   @override
@@ -247,7 +279,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   width: 1,
                 ),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
@@ -256,14 +288,23 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     size: 14,
                   ),
                   SizedBox(width: 4),
-                  Text(
-                    '250',
-                    style: TextStyle(
-                      color: Color(0xFF8B7355),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  _isLoadingCredits
+                      ? SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF8B7355)),
+                          ),
+                        )
+                      : Text(
+                          '$_creditBalance',
+                          style: TextStyle(
+                            color: Color(0xFF8B7355),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                 ],
               ),
             ),
