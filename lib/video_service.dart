@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Models for video generation API
 class VideoRequest {
@@ -246,6 +247,148 @@ class GeneratedVideo {
     } else {
       return '${(fileSize! / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
+  }
+}
+
+// Video History Models
+class VideoHistoryItem {
+  final String id;
+  final String title;
+  final String? videoUrl;
+  final String? thumbnailUrl;
+  final String? playbackUrl;
+  final String videoStatus;
+  final DateTime createdAt;
+  final int? scenesCount;
+  final int? creditsCharged;
+  final double? fileSizeMb;
+  final int? durationSeconds;
+  final Map<String, dynamic>? r2Assets;
+
+  VideoHistoryItem({
+    required this.id,
+    required this.title,
+    this.videoUrl,
+    this.thumbnailUrl,
+    this.playbackUrl,
+    required this.videoStatus,
+    required this.createdAt,
+    this.scenesCount,
+    this.creditsCharged,
+    this.fileSizeMb,
+    this.durationSeconds,
+    this.r2Assets,
+  });
+
+  factory VideoHistoryItem.fromJson(Map<String, dynamic> json) {
+    return VideoHistoryItem(
+      id: json['id'] ?? '',
+      title: json['title'] ?? 'Untitled Video',
+      videoUrl: json['video_url'],
+      thumbnailUrl: json['thumbnail_url'],
+      playbackUrl: json['playback_url'],
+      videoStatus: json['video_status'] ?? 'unknown',
+      createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
+      scenesCount: json['scenes_count'],
+      creditsCharged: json['credits_charged'],
+      fileSizeMb: json['file_size_mb']?.toDouble(),
+      durationSeconds: json['duration_seconds'],
+      r2Assets: json['r2_assets'],
+    );
+  }
+
+  String get statusDisplayName {
+    switch (videoStatus) {
+      case 'completed':
+        return 'Completed';
+      case 'processing':
+        return 'Processing';
+      case 'failed':
+        return 'Failed';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  bool get isCompleted => videoStatus == 'completed';
+  bool get isProcessing => videoStatus == 'processing';
+  bool get isFailed => videoStatus == 'failed';
+
+  String get formattedFileSize {
+    if (fileSizeMb == null) return 'Unknown size';
+    if (fileSizeMb! < 1) {
+      return '${(fileSizeMb! * 1024).toStringAsFixed(1)} KB';
+    }
+    return '${fileSizeMb!.toStringAsFixed(1)} MB';
+  }
+
+  String get formattedDuration {
+    if (durationSeconds == null) return 'Unknown duration';
+    final minutes = durationSeconds! ~/ 60;
+    final seconds = durationSeconds! % 60;
+    return '${minutes}:${seconds.toString().padLeft(2, '0')}';
+  }
+}
+
+class VideoStats {
+  final int totalVideos;
+  final int completedVideos;
+  final int processingVideos;
+  final int failedVideos;
+  final double totalStorageMb;
+  final double totalStorageGb;
+  final int totalCreditsUsed;
+
+  VideoStats({
+    required this.totalVideos,
+    required this.completedVideos,
+    required this.processingVideos,
+    required this.failedVideos,
+    required this.totalStorageMb,
+    required this.totalStorageGb,
+    required this.totalCreditsUsed,
+  });
+
+  factory VideoStats.fromJson(Map<String, dynamic> json) {
+    final stats = json['stats'] ?? {};
+    return VideoStats(
+      totalVideos: stats['total_videos'] ?? 0,
+      completedVideos: stats['completed_videos'] ?? 0,
+      processingVideos: stats['processing_videos'] ?? 0,
+      failedVideos: stats['failed_videos'] ?? 0,
+      totalStorageMb: (stats['total_storage_mb'] ?? 0.0).toDouble(),
+      totalStorageGb: (stats['total_storage_gb'] ?? 0.0).toDouble(),
+      totalCreditsUsed: stats['total_credits_used_for_videos'] ?? 0,
+    );
+  }
+}
+
+class VideoHistoryResponse {
+  final List<VideoHistoryItem> videos;
+  final int total;
+  final int limit;
+  final int offset;
+  final bool hasMore;
+
+  VideoHistoryResponse({
+    required this.videos,
+    required this.total,
+    required this.limit,
+    required this.offset,
+    required this.hasMore,
+  });
+
+  factory VideoHistoryResponse.fromJson(Map<String, dynamic> json) {
+    final videosJson = json['videos'] as List<dynamic>? ?? [];
+    final pagination = json['pagination'] ?? {};
+    
+    return VideoHistoryResponse(
+      videos: videosJson.map((v) => VideoHistoryItem.fromJson(v)).toList(),
+      total: pagination['total'] ?? 0,
+      limit: pagination['limit'] ?? 50,
+      offset: pagination['offset'] ?? 0,
+      hasMore: pagination['has_more'] ?? false,
+    );
   }
 }
 
@@ -632,5 +775,202 @@ class VideoGenerationService {
     }
 
     return results;
+  }
+  
+  // Video History API Methods
+  
+  static Future<String?> _getAuthToken() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('access_token');
+    } catch (e) {
+      print('Error getting auth token: $e');
+      return null;
+    }
+  }
+
+  static Map<String, String> _getAuthHeaders(String? token) {
+    final headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'User-Agent': 'Bookey-Flutter-App/1.0',
+    };
+    
+    if (token != null) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    
+    return headers;
+  }
+
+  /// Get user's video history with pagination
+  static Future<VideoHistoryResponse?> getVideoHistory({
+    int limit = 50,
+    int offset = 0,
+    String? status,
+  }) async {
+    final client = _createHttpClient();
+    
+    try {
+      final token = await _getAuthToken();
+      if (token == null) {
+        throw Exception('No authentication token found');
+      }
+
+      final queryParams = <String, String>{
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+      };
+      
+      if (status != null) {
+        queryParams['status'] = status;
+      }
+
+      final uri = Uri.parse('$baseUrl/videos/history').replace(
+        queryParameters: queryParams,
+      );
+
+      final response = await client.get(
+        uri,
+        headers: _getAuthHeaders(token),
+      ).timeout(Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return VideoHistoryResponse.fromJson(data);
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please log in again.');
+      } else {
+        throw Exception('Failed to load video history: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting video history: $e');
+      return null;
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Get detailed information about a specific video
+  static Future<VideoHistoryItem?> getVideoDetails(String videoId) async {
+    final client = _createHttpClient();
+    
+    try {
+      final token = await _getAuthToken();
+      if (token == null) {
+        throw Exception('No authentication token found');
+      }
+
+      final response = await client.get(
+        Uri.parse('$baseUrl/videos/$videoId'),
+        headers: _getAuthHeaders(token),
+      ).timeout(Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return VideoHistoryItem.fromJson(data['video']);
+      } else if (response.statusCode == 404) {
+        throw Exception('Video not found');
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please log in again.');
+      } else {
+        throw Exception('Failed to load video details: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting video details: $e');
+      return null;
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Delete a video and all its assets
+  static Future<bool> deleteVideo(String videoId) async {
+    final client = _createHttpClient();
+    
+    try {
+      final token = await _getAuthToken();
+      if (token == null) {
+        throw Exception('No authentication token found');
+      }
+
+      final response = await client.delete(
+        Uri.parse('$baseUrl/videos/$videoId'),
+        headers: _getAuthHeaders(token),
+      ).timeout(Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        return true;
+      } else if (response.statusCode == 404) {
+        throw Exception('Video not found');
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please log in again.');
+      } else {
+        throw Exception('Failed to delete video: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error deleting video: $e');
+      return false;
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Get user's video statistics
+  static Future<VideoStats?> getVideoStats() async {
+    final client = _createHttpClient();
+    
+    try {
+      final token = await _getAuthToken();
+      if (token == null) {
+        throw Exception('No authentication token found');
+      }
+
+      final response = await client.get(
+        Uri.parse('$baseUrl/videos/stats'),
+        headers: _getAuthHeaders(token),
+      ).timeout(Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return VideoStats.fromJson(data);
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please log in again.');
+      } else {
+        throw Exception('Failed to load video stats: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting video stats: $e');
+      return null;
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Get video playback URL by video ID
+  static Future<String?> getVideoPlaybackUrl(String videoId) async {
+    final client = _createHttpClient();
+    
+    try {
+      final response = await client.get(
+        Uri.parse('$baseUrl/play/$videoId'),
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Bookey-Flutter-App/1.0',
+        },
+      ).timeout(Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['video_url'];
+      } else {
+        throw Exception('Failed to get playback URL: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting playback URL: $e');
+      return null;
+    } finally {
+      client.close();
+    }
   }
 }

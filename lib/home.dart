@@ -9,6 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
 import 'input.dart';
 import 'wallet_service.dart';
+import 'credit.dart';
+import 'navigation_service.dart';
 
 class HomePage extends StatefulWidget {
   final Function(ProcessingResult) onContentProcessed;
@@ -31,7 +33,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
 
-  int _selectedTabIndex = 0; // 0=AI Story, 1=Audio, 2=Images, 3=PDF
+  int _selectedTabIndex = 0; // 0=Story Maker, 1=Audio Book, 2=Images, 3=Ebook
 
   @override
   void initState() {
@@ -88,6 +90,17 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     }
   }
 
+  void _navigateToWallet() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const CreditPage(),
+      ),
+    ).then((_) {
+      // Refresh credits when returning from credit page
+      _loadCredits();
+    });
+  }
+
   @override
   void dispose() {
     _fadeController.dispose();
@@ -124,7 +137,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Future<void> _processPdf() async {
     if (_selectedFile == null && _selectedWebFile == null) {
-      _showSnackBar('Please select a PDF file first', isError: true);
+      _showSnackBar('Please select an ebook file first', isError: true);
       return;
     }
 
@@ -138,14 +151,18 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           maxConcurrent: 5);
 
       if (result.success) {
+        // Show success message briefly
+        _showSnackBar('Ebook processed successfully!', isError: false);
+        
+        // Wait a moment then navigate
+        await Future.delayed(Duration(milliseconds: 800));
+        NavigationService().navigateToProcessing();
         widget.onContentProcessed(result);
-        _showSnackBar('PDF processed successfully! Check Processing tab',
-            isError: false);
       } else {
         throw Exception(result.message);
       }
     } catch (e) {
-      _showSnackBar('Failed to process PDF: ${e.toString()}', isError: true);
+      _showSnackBar('Failed to process ebook: ${e.toString()}', isError: true);
     } finally {
       setState(() {
         _isProcessing = false;
@@ -269,43 +286,52 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               ),
             ),
             const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF5F3F0), // Beige
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: const Color(0xFFE8E3DD),
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.account_balance_wallet,
-                    color: Color(0xFF8B7355), // Brown tone
-                    size: 14,
+            GestureDetector(
+              onTap: _navigateToWallet,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F3F0), // Beige
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFE8E3DD),
+                    width: 1,
                   ),
-                  SizedBox(width: 4),
-                  _isLoadingCredits
-                      ? SizedBox(
-                          width: 12,
-                          height: 12,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1.5,
-                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF8B7355)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.account_balance_wallet,
+                      color: Color(0xFF8B7355), // Brown tone
+                      size: 14,
+                    ),
+                    SizedBox(width: 4),
+                    _isLoadingCredits
+                        ? SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5,
+                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF8B7355)),
+                            ),
+                          )
+                        : Text(
+                            '$_creditBalance',
+                            style: TextStyle(
+                              color: Color(0xFF8B7355),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        )
-                      : Text(
-                          '$_creditBalance',
-                          style: TextStyle(
-                            color: Color(0xFF8B7355),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                ],
+                    SizedBox(width: 4),
+                    Icon(
+                      Icons.arrow_forward_ios,
+                      color: Color(0xFF8B7355),
+                      size: 10,
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -440,7 +466,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         children: [
           Expanded(
             child: _buildTabButton(
-              title: 'AI Story',
+              title: 'Story Maker',
               icon: Icons.auto_awesome,
               isSelected: _selectedTabIndex == 0,
               onTap: () => setState(() => _selectedTabIndex = 0),
@@ -449,7 +475,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           const SizedBox(width: 3),
           Expanded(
             child: _buildTabButton(
-              title: 'Audio',
+              title: 'Audio Book',
               icon: Icons.audiotrack,
               isSelected: _selectedTabIndex == 1,
               onTap: () => setState(() => _selectedTabIndex = 1),
@@ -467,7 +493,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           const SizedBox(width: 3),
           Expanded(
             child: _buildTabButton(
-              title: 'PDF',
+              title: 'Ebook',
               icon: Icons.picture_as_pdf,
               isSelected: _selectedTabIndex == 3,
               onTap: () => setState(() => _selectedTabIndex = 3),
@@ -518,7 +544,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Widget _buildTabContent() {
     switch (_selectedTabIndex) {
-      case 0: // AI Story Generator
+      case 0: // Story Maker
         return StoryGeneratorWidget(
           key: const ValueKey('story_generator'),
           onStoryGenerated: _handleContentProcessed,
@@ -533,7 +559,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           key: const ValueKey('image_upload'),
           onImagesProcessed: _handleContentProcessed,
         );
-      case 3: // PDF Upload
+      case 3: // Ebook Upload
         return _buildPdfTab();
       default:
         return _buildPdfTab();
@@ -583,7 +609,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           ),
           const SizedBox(height: 16),
           Text(
-            hasFile ? 'PDF File Selected!' : 'Upload PDF Document',
+            hasFile ? 'Ebook File Selected!' : 'Upload Ebook Document',
             style: const TextStyle(
               color: Color(0xFF2D2D2D),
               fontSize: 18,
@@ -594,7 +620,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           Text(
             hasFile
                 ? 'Ready to process with AI text cleaning and enhancement'
-                : 'Upload PDF files for AI-powered text extraction and cleaning',
+                : 'Upload PDF/EPUB files for AI-powered text extraction and cleaning',
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: Color(0xFF8B7355),
@@ -606,7 +632,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           const SizedBox(height: 20),
           if (!hasFile)
             _buildActionButton(
-              text: 'Choose PDF File',
+              text: 'Choose Ebook File',
               icon: Icons.upload_file,
               onPressed: _pickPdfFile,
               isPrimary: true,
@@ -633,7 +659,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 Expanded(
                   flex: 2,
                   child: _buildActionButton(
-                    text: _isProcessing ? 'Processing...' : 'Process PDF',
+                    text: _isProcessing ? 'Processing...' : 'Process Ebook',
                     icon: _isProcessing ? null : Icons.auto_awesome,
                     onPressed: _isProcessing ? null : _processPdf,
                     isPrimary: true,
@@ -650,8 +676,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Widget _buildSelectedFileCard() {
     final fileName = kIsWeb
-        ? (_selectedWebFile?.name ?? 'PDF Document')
-        : (_selectedFile?.path.split('/').last ?? 'PDF Document');
+        ? (_selectedWebFile?.name ?? 'Ebook Document')
+        : (_selectedFile?.path.split('/').last ?? 'Ebook Document');
 
     return Container(
       padding: const EdgeInsets.all(16),

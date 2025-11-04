@@ -266,7 +266,7 @@ class ApiService {
   static const String baseUrl = 'https://bookey-pdf-production.up.railway.app';
 
   // Story API (FIXED - correct endpoint)
-  static const String storyApiUrl = 'https://imgbooc-production.up.railway.app/';
+  static const String storyApiUrl = 'https://stboo-production-cd4e.up.railway.app';
   
   // NEW: Unified Media API endpoint
   static const String mediaApiUrl = 'https://imgbooc-production.up.railway.app';

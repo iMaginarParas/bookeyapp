@@ -17,6 +17,7 @@ dependencies:
   url_launcher: ^6.2.1
   video_player: ^2.8.1
   chewie: ^1.7.4
+  purchases_flutter: ^6.28.1  # ← ADDED: RevenueCat for subscriptions and purchases
 
 dev_dependencies:
   flutter_test:

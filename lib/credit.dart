@@ -1,8 +1,168 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 import 'wallet_service.dart';
 
-// Subscription and Credit Package Models
+// RevenueCat service class for handling subscriptions and purchases
+class RevenueCatService {
+  static const String _apiKey = 'YOUR_REVENUECAT_API_KEY'; // Replace with your actual API key
+  static const String _entitlementId = 'pro_access';
+  static const String _yearlyProductId = 'bookey_pro_yearly';
+  
+  static bool _isInitialized = false;
+  
+  // Initialize RevenueCat
+  static Future<void> initialize() async {
+    if (_isInitialized) return;
+    
+    try {
+      await Purchases.setLogLevel(LogLevel.info);
+      
+      PurchasesConfiguration configuration = PurchasesConfiguration(_apiKey);
+      await Purchases.configure(configuration);
+      
+      _isInitialized = true;
+      print('RevenueCat initialized successfully');
+    } catch (e) {
+      print('Failed to initialize RevenueCat: $e');
+      rethrow;
+    }
+  }
+  
+  // Get available products
+  static Future<List<StoreProduct>> getProducts() async {
+    try {
+      await initialize();
+      final offerings = await Purchases.getOfferings();
+      
+      if (offerings.current != null) {
+        return offerings.current!.availablePackages
+            .map((package) => package.storeProduct)
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      print('Error getting products: $e');
+      return [];
+    }
+  }
+  
+  // Purchase subscription
+  static Future<bool> purchaseSubscription(String productId) async {
+    try {
+      await initialize();
+      
+      final offerings = await Purchases.getOfferings();
+      if (offerings.current == null) {
+        throw Exception('No offerings available');
+      }
+      
+      // Find the package with matching product ID
+      Package? targetPackage;
+      for (final package in offerings.current!.availablePackages) {
+        if (package.storeProduct.identifier == productId) {
+          targetPackage = package;
+          break;
+        }
+      }
+      
+      if (targetPackage == null) {
+        throw Exception('Product not found: $productId');
+      }
+      
+      final customerInfo = await Purchases.purchasePackage(targetPackage);
+      
+      // Check if the purchase was successful
+      if (customerInfo.entitlements.active.containsKey(_entitlementId)) {
+        return true;
+      }
+      
+      return false;
+    } catch (e) {
+      print('Purchase failed: $e');
+      if (e is PlatformException) {
+        // Handle specific error cases
+        if (e.code == PurchasesErrorCode.purchaseCancelledError.name) {
+          throw Exception('Purchase was cancelled');
+        } else if (e.code == PurchasesErrorCode.paymentPendingError.name) {
+          throw Exception('Payment is pending');
+        } else if (e.code == PurchasesErrorCode.productNotAvailableForPurchaseError.name) {
+          throw Exception('Product not available for purchase');
+        }
+      }
+      rethrow;
+    }
+  }
+  
+  // Purchase credits (one-time purchase)
+  static Future<bool> purchaseCredits(String productId) async {
+    try {
+      await initialize();
+      
+      final offerings = await Purchases.getOfferings();
+      if (offerings.current == null) {
+        throw Exception('No offerings available');
+      }
+      
+      // For one-time purchases, we'll handle them through the same flow
+      // but they won't be tied to an entitlement
+      Package? targetPackage;
+      for (final package in offerings.current!.availablePackages) {
+        if (package.storeProduct.identifier == productId) {
+          targetPackage = package;
+          break;
+        }
+      }
+      
+      if (targetPackage == null) {
+        throw Exception('Product not found: $productId');
+      }
+      
+      final customerInfo = await Purchases.purchasePackage(targetPackage);
+      
+      // For credit purchases, we consider it successful if no error occurred
+      return true;
+    } catch (e) {
+      print('Credit purchase failed: $e');
+      rethrow;
+    }
+  }
+  
+  // Check subscription status
+  static Future<bool> hasActiveSubscription() async {
+    try {
+      await initialize();
+      final customerInfo = await Purchases.getCustomerInfo();
+      return customerInfo.entitlements.active.containsKey(_entitlementId);
+    } catch (e) {
+      print('Error checking subscription status: $e');
+      return false;
+    }
+  }
+  
+  // Restore purchases
+  static Future<CustomerInfo> restorePurchases() async {
+    try {
+      await initialize();
+      return await Purchases.restorePurchases();
+    } catch (e) {
+      print('Error restoring purchases: $e');
+      rethrow;
+    }
+  }
+  
+  // Get customer info
+  static Future<CustomerInfo?> getCustomerInfo() async {
+    try {
+      await initialize();
+      return await Purchases.getCustomerInfo();
+    } catch (e) {
+      print('Error getting customer info: $e');
+      return null;
+    }
+  }
+}
+
 class SubscriptionPlan {
   final String id;
   final String name;
@@ -12,6 +172,7 @@ class SubscriptionPlan {
   final String duration;
   final List<String> features;
   final bool isPopular;
+  final String? revenueCatProductId;
 
   SubscriptionPlan({
     required this.id,
@@ -22,6 +183,7 @@ class SubscriptionPlan {
     required this.duration,
     required this.features,
     this.isPopular = false,
+    this.revenueCatProductId,
   });
 }
 
@@ -32,6 +194,7 @@ class CreditPackage {
   final int credits;
   final String bonus;
   final bool isPopular;
+  final String? revenueCatProductId;
 
   CreditPackage({
     required this.id,
@@ -40,6 +203,7 @@ class CreditPackage {
     required this.credits,
     this.bonus = '',
     this.isPopular = false,
+    this.revenueCatProductId,
   });
 }
 
@@ -54,32 +218,38 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
   WalletInfo? _walletInfo;
   List<CreditTransaction> _transactions = [];
   bool _isLoading = true;
+  bool _isPurchasing = false;
   String? _errorMessage;
   int _selectedTabIndex = 0; // 0 = Overview, 1 = Subscriptions, 2 = Buy Credits
+  bool _hasActiveSubscription = false;
+  List<StoreProduct> _availableProducts = [];
   
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
-  // Subscription Plans
+  // Subscription Plans - Updated to yearly pricing
   final List<SubscriptionPlan> _subscriptionPlans = [
     SubscriptionPlan(
-      id: 'monthly_pro',
-      name: 'Pro Monthly',
-      description: 'Perfect for regular users',
+      id: 'yearly_pro',
+      name: 'Pro Yearly',
+      description: 'Best value for content creators',
       price: 999.0,
       credits: 100,
-      duration: 'Monthly',
+      duration: 'Yearly',
       features: [
-        '100 credits per month',
-        'Approximately 14 videos',
+        '100 credits per month (1200/year)',
+        'Approximately 170+ videos per year',
         'Priority processing',
         'Email support',
+        'Early access to new features',
+        'No ads',
       ],
       isPopular: true,
+      revenueCatProductId: 'bookey_pro_yearly',
     ),
   ];
 
-  // Credit Packages
+  // Credit Packages - Updated with RevenueCat product IDs
   final List<CreditPackage> _creditPackages = [
     CreditPackage(
       id: 'credits_50',
@@ -87,6 +257,7 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
       price: 50.0,
       credits: 50,
       bonus: 'Perfect for trying out',
+      revenueCatProductId: 'bookey_credits_50',
     ),
     CreditPackage(
       id: 'credits_100',
@@ -95,6 +266,7 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
       credits: 100,
       bonus: 'Most popular choice',
       isPopular: true,
+      revenueCatProductId: 'bookey_credits_100',
     ),
     CreditPackage(
       id: 'credits_500',
@@ -102,6 +274,7 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
       price: 500.0,
       credits: 500,
       bonus: 'Best value for money',
+      revenueCatProductId: 'bookey_credits_500',
     ),
     CreditPackage(
       id: 'credits_1000',
@@ -109,6 +282,7 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
       price: 1000.0,
       credits: 1000,
       bonus: 'For power users',
+      revenueCatProductId: 'bookey_credits_1000',
     ),
   ];
 
@@ -124,7 +298,40 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
     );
     _pulseController.repeat(reverse: true);
     
+    _initializeRevenueCat();
     _loadWalletData();
+  }
+
+  Future<void> _initializeRevenueCat() async {
+    try {
+      await RevenueCatService.initialize();
+      await _checkSubscriptionStatus();
+      await _loadAvailableProducts();
+    } catch (e) {
+      print('Failed to initialize RevenueCat: $e');
+    }
+  }
+
+  Future<void> _checkSubscriptionStatus() async {
+    try {
+      final hasActiveSubscription = await RevenueCatService.hasActiveSubscription();
+      setState(() {
+        _hasActiveSubscription = hasActiveSubscription;
+      });
+    } catch (e) {
+      print('Error checking subscription status: $e');
+    }
+  }
+
+  Future<void> _loadAvailableProducts() async {
+    try {
+      final products = await RevenueCatService.getProducts();
+      setState(() {
+        _availableProducts = products;
+      });
+    } catch (e) {
+      print('Error loading products: $e');
+    }
   }
 
   @override
@@ -274,6 +481,50 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Subscription Status Card
+          if (_hasActiveSubscription)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              margin: const EdgeInsets.only(bottom: 24),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF10B981), Color(0xFF059669)],
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF10B981).withOpacity(0.3),
+                    blurRadius: 15,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.verified, color: Colors.white, size: 32),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Active Subscription',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'You have an active Pro subscription',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white.withOpacity(0.9),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          
           const Text(
             'Choose Your Plan',
             style: TextStyle(
@@ -292,6 +543,40 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
           ),
           const SizedBox(height: 32),
           ..._subscriptionPlans.map((plan) => _buildSubscriptionCard(plan)).toList(),
+          
+          const SizedBox(height: 24),
+          
+          // Restore Purchases Button
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton.icon(
+              onPressed: _isPurchasing ? null : _restorePurchases,
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: const Color(0xFF6366F1).withOpacity(0.5)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: _isPurchasing 
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+                      ),
+                    )
+                  : const Icon(Icons.restore, color: Color(0xFF6366F1)),
+              label: Text(
+                _isPurchasing ? 'Restoring...' : 'Restore Purchases',
+                style: const TextStyle(
+                  color: Color(0xFF6366F1),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -457,22 +742,36 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
             width: double.infinity,
             height: 48,
             child: ElevatedButton(
-              onPressed: () => _purchaseSubscription(plan),
+              onPressed: (_isPurchasing || _hasActiveSubscription) 
+                  ? null 
+                  : () => _purchaseSubscription(plan),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6366F1),
+                backgroundColor: _hasActiveSubscription 
+                    ? const Color(0xFF10B981) 
+                    : const Color(0xFF6366F1),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
                 elevation: 0,
+                disabledBackgroundColor: Colors.grey.withOpacity(0.3),
               ),
-              child: const Text(
-                'Subscribe Now',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              child: _isPurchasing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Text(
+                      _hasActiveSubscription ? 'Active Subscription' : 'Subscribe Now',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
             ),
           ),
         ],
@@ -582,7 +881,7 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
             width: double.infinity,
             height: 36,
             child: ElevatedButton(
-              onPressed: () => _purchaseCredits(package),
+              onPressed: _isPurchasing ? null : () => _purchaseCredits(package),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF6366F1),
                 foregroundColor: Colors.white,
@@ -590,14 +889,24 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 elevation: 0,
+                disabledBackgroundColor: Colors.grey.withOpacity(0.3),
               ),
-              child: const Text(
-                'Buy Now',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              child: _isPurchasing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Text(
+                      'Buy Now',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
             ),
           ),
         ],
@@ -605,17 +914,84 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
     );
   }
 
-  void _purchaseSubscription(SubscriptionPlan plan) {
-    // TODO: Implement RevenueCat subscription purchase
-    _showPurchaseDialog('Subscription', plan.name, plan.price);
+  Future<void> _purchaseSubscription(SubscriptionPlan plan) async {
+    if (_isPurchasing || plan.revenueCatProductId == null) return;
+
+    setState(() {
+      _isPurchasing = true;
+    });
+
+    try {
+      final success = await RevenueCatService.purchaseSubscription(plan.revenueCatProductId!);
+      
+      if (success) {
+        // Show success message
+        _showSuccessDialog('Subscription', 'Successfully subscribed to ${plan.name}!');
+        
+        // Refresh subscription status and wallet data
+        await _checkSubscriptionStatus();
+        await _loadWalletData();
+      } else {
+        _showErrorDialog('Purchase failed', 'Unable to complete the subscription purchase. Please try again.');
+      }
+    } catch (e) {
+      String errorMessage = 'An error occurred during purchase.';
+      
+      if (e.toString().contains('cancelled')) {
+        errorMessage = 'Purchase was cancelled.';
+      } else if (e.toString().contains('pending')) {
+        errorMessage = 'Payment is pending. Please check your payment method.';
+      } else if (e.toString().contains('not available')) {
+        errorMessage = 'This product is not available for purchase.';
+      }
+      
+      _showErrorDialog('Purchase Error', errorMessage);
+    } finally {
+      setState(() {
+        _isPurchasing = false;
+      });
+    }
   }
 
-  void _purchaseCredits(CreditPackage package) {
-    // TODO: Implement RevenueCat credit purchase
-    _showPurchaseDialog('Credits', package.name, package.price);
+  Future<void> _purchaseCredits(CreditPackage package) async {
+    if (_isPurchasing || package.revenueCatProductId == null) return;
+
+    setState(() {
+      _isPurchasing = true;
+    });
+
+    try {
+      final success = await RevenueCatService.purchaseCredits(package.revenueCatProductId!);
+      
+      if (success) {
+        // Show success message
+        _showSuccessDialog('Credits', 'Successfully purchased ${package.credits} credits!');
+        
+        // Refresh wallet data to show new credits
+        await _loadWalletData();
+      } else {
+        _showErrorDialog('Purchase failed', 'Unable to complete the credit purchase. Please try again.');
+      }
+    } catch (e) {
+      String errorMessage = 'An error occurred during purchase.';
+      
+      if (e.toString().contains('cancelled')) {
+        errorMessage = 'Purchase was cancelled.';
+      } else if (e.toString().contains('pending')) {
+        errorMessage = 'Payment is pending. Please check your payment method.';
+      } else if (e.toString().contains('not available')) {
+        errorMessage = 'This product is not available for purchase.';
+      }
+      
+      _showErrorDialog('Purchase Error', errorMessage);
+    } finally {
+      setState(() {
+        _isPurchasing = false;
+      });
+    }
   }
 
-  void _showPurchaseDialog(String type, String itemName, double price) {
+  void _showSuccessDialog(String type, String message) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -624,42 +1000,98 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          title: Text(
-            'Purchase $type',
-            style: const TextStyle(color: Colors.white),
+          title: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Color(0xFF10B981), size: 28),
+              const SizedBox(width: 12),
+              Text(
+                'Success!',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ],
           ),
           content: Text(
-            'You are about to purchase $itemName for ₹${price.toInt()}.\n\nRevenueCat integration will be implemented here.',
+            message,
+            style: TextStyle(color: Colors.white.withOpacity(0.8)),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Great!', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1A23),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Color(0xFFEF4444), size: 28),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          content: Text(
+            message,
             style: TextStyle(color: Colors.white.withOpacity(0.8)),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: Text(
-                'Cancel',
+                'OK',
                 style: TextStyle(color: Colors.white.withOpacity(0.6)),
               ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                // TODO: Implement actual purchase
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Purchase functionality will be implemented with RevenueCat'),
-                    backgroundColor: Color(0xFF6366F1),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6366F1),
-              ),
-              child: const Text('Proceed'),
             ),
           ],
         );
       },
     );
+  }
+
+  // Add restore purchases method
+  Future<void> _restorePurchases() async {
+    setState(() {
+      _isPurchasing = true;
+    });
+
+    try {
+      final customerInfo = await RevenueCatService.restorePurchases();
+      
+      // Check if any entitlements were restored
+      if (customerInfo.entitlements.active.isNotEmpty) {
+        _showSuccessDialog('Restore', 'Your purchases have been successfully restored!');
+        await _checkSubscriptionStatus();
+        await _loadWalletData();
+      } else {
+        _showErrorDialog('No Purchases', 'No previous purchases were found to restore.');
+      }
+    } catch (e) {
+      _showErrorDialog('Restore Failed', 'Unable to restore purchases. Please try again.');
+    } finally {
+      setState(() {
+        _isPurchasing = false;
+      });
+    }
   }
 
   Widget _buildErrorState() {

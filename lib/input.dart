@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'api_service.dart';
+import 'navigation_service.dart';
 
 // Story Generator Widget (unchanged - working correctly)
 class StoryGeneratorWidget extends StatefulWidget {
@@ -188,8 +189,17 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
         // Complete all stages
         await _completeAllStages();
         
+        // Show success message briefly
+        _showSnackBar('Story generated successfully!', isError: false);
+        
+        // Pass the result to parent and wait a moment
+        await Future.delayed(Duration(milliseconds: 800));
+        
+        // Navigate to processing tab automatically
+        NavigationService().navigateToProcessing();
         widget.onStoryGenerated(result);
-        _showSnackBar('Story generated successfully! Navigating to Processing...', isError: false);
+        
+        // Clear form after navigation
         _clearForm();
       } else {
         throw Exception(result.message);
@@ -279,12 +289,12 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
           ),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16), // Reduced padding for tighter layout
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeader(),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16), // Reduced spacing
               if (_showStagedLoading)
                 StagedLoadingWidget(
                   stages: _storyStages,
@@ -295,7 +305,7 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
                 )
               else ...[
                 _buildFormLayout(),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16), // Reduced spacing
                 _buildGenerateSection(),
               ],
             ],
@@ -364,7 +374,7 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
           placeholder: 'Enter a compelling title...',
           isRequired: true,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12), // Reduced from 16
         _buildFormField(
           controller: _subjectController,
           label: 'Main Subject/Plot',
@@ -372,7 +382,7 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
           isRequired: true,
           maxLines: 3,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12), // Reduced from 16
         Row(
           children: [
             Expanded(
@@ -387,7 +397,7 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
                 },
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10), // Reduced from 12
             Expanded(
               child: _buildDropdownField(
                 value: _selectedDuration,
@@ -402,14 +412,14 @@ class _StoryGeneratorWidgetState extends State<StoryGeneratorWidget>
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12), // Reduced from 16
         _buildFormField(
           controller: _charactersController,
           label: 'Characters (Optional)',
           placeholder: 'Describe main characters...',
           maxLines: 2,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12), // Reduced from 16
         _buildFormField(
           controller: _contextController,
           label: 'Additional Context (Optional)',
@@ -708,7 +718,7 @@ class _StagedLoadingWidgetState extends State<StagedLoadingWidget>
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20), // Reduced from 24
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -718,7 +728,7 @@ class _StagedLoadingWidgetState extends State<StagedLoadingWidget>
             widget.primaryColor.withOpacity(0.05),
           ],
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16), // Reduced from 20
         border: Border.all(
           color: widget.primaryColor.withOpacity(0.2),
         ),
@@ -732,50 +742,50 @@ class _StagedLoadingWidgetState extends State<StagedLoadingWidget>
               return Transform.scale(
                 scale: _pulseAnimation.value,
                 child: Container(
-                  width: 60,
-                  height: 60,
+                  width: 56, // Reduced from 60
+                  height: 56, // Reduced from 60
                   decoration: BoxDecoration(
                     color: widget.primaryColor,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
                         color: widget.primaryColor.withOpacity(0.3),
-                        blurRadius: 20,
-                        spreadRadius: 2,
+                        blurRadius: 16, // Reduced from 20
+                        spreadRadius: 1, // Reduced from 2
                       ),
                     ],
                   ),
                   child: Icon(
                     widget.icon,
                     color: Colors.white,
-                    size: 28,
+                    size: 26, // Reduced from 28
                   ),
                 ),
               );
             },
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16), // Reduced from 20
           
           // Title
           Text(
             widget.title,
             style: const TextStyle(
-              fontSize: 20,
+              fontSize: 18, // Reduced from 20
               fontWeight: FontWeight.w700,
               color: Color(0xFF2D2D2D),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6), // Reduced from 8
           
           Text(
             'Please wait while we process your request...',
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 13, // Reduced from 14
               color: const Color(0xFF8B7355).withOpacity(0.8),
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24), // Reduced from 32
           
           // Progress stages
           Column(
@@ -785,14 +795,14 @@ class _StagedLoadingWidgetState extends State<StagedLoadingWidget>
               final isPending = index >= widget.currentStage;
               
               return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.only(bottom: 12), // Reduced from 16
                 child: Row(
                   children: [
                     // Step indicator
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 300),
-                      width: 28,
-                      height: 28,
+                      width: 26, // Reduced from 28
+                      height: 26, // Reduced from 28
                       decoration: BoxDecoration(
                         color: isCompleted 
                             ? const Color(0xFF10B981)
@@ -806,7 +816,7 @@ class _StagedLoadingWidgetState extends State<StagedLoadingWidget>
                               : isCurrent 
                                   ? widget.primaryColor
                                   : const Color(0xFFD1D5DB),
-                          width: 2,
+                          width: 1.5, // Reduced from 2
                         ),
                       ),
                       child: isCompleted
@@ -815,28 +825,28 @@ class _StagedLoadingWidgetState extends State<StagedLoadingWidget>
                               child: const Icon(
                                 Icons.check,
                                 color: Colors.white,
-                                size: 16,
+                                size: 14, // Reduced from 16
                               ),
                             )
                           : isCurrent
                               ? SizedBox(
-                                  width: 12,
-                                  height: 12,
+                                  width: 10, // Reduced from 12
+                                  height: 10, // Reduced from 12
                                   child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                                    strokeWidth: 1.5, // Reduced from 2
                                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                   ),
                                 )
                               : Container(
-                                  width: 8,
-                                  height: 8,
+                                  width: 6, // Reduced from 8
+                                  height: 6, // Reduced from 8
                                   decoration: BoxDecoration(
                                     color: const Color(0xFF9CA3AF),
                                     shape: BoxShape.circle,
                                   ),
                                 ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 12), // Reduced from 16
                     
                     // Step text
                     Expanded(
@@ -1106,8 +1116,14 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
       final result = status['result'];
       if (result != null) {
         final processingResult = _convertJobResultToProcessingResult(result);
+        
+        // Show success message briefly
+        _showSnackBar('Audio processed successfully!', isError: false);
+        
+        // Wait a moment then navigate
+        await Future.delayed(Duration(milliseconds: 800));
+        NavigationService().navigateToProcessing();
         widget.onAudioProcessed(processingResult);
-        _showSnackBar('Audio processed successfully! Navigating to Processing...', isError: false);
         
         setState(() {
           _selectedFile = null;
@@ -1124,8 +1140,14 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
           final results = await BackgroundJobApiService.getResults(sessionId);
           if (results != null) {
             final processingResult = _convertJobResultToProcessingResult(results);
+            
+            // Show success message briefly
+            _showSnackBar('Audio processed successfully!', isError: false);
+            
+            // Wait a moment then navigate
+            await Future.delayed(Duration(milliseconds: 800));
+            NavigationService().navigateToProcessing();
             widget.onAudioProcessed(processingResult);
-            _showSnackBar('Audio processed successfully! Navigating to Processing...', isError: false);
             
             setState(() {
               _selectedFile = null;
@@ -1226,7 +1248,7 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
     return FadeTransition(
       opacity: _fadeAnimation,
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16), // Reduced from 20
         decoration: BoxDecoration(
           color: hasFile ? const Color(0xFFF0FDF4) : const Color(0xFFF5F3F0),
           borderRadius: BorderRadius.circular(16),
@@ -1250,29 +1272,29 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
               )
             else ...[
               Container(
-                width: 60,
-                height: 60,
+                width: 56, // Reduced from 60
+                height: 56, // Reduced from 60
                 decoration: BoxDecoration(
                   color: hasFile ? const Color(0xFF10B981) : const Color(0xFF8B7355),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(14), // Reduced from 16
                   boxShadow: [
                     BoxShadow(
                       color: (hasFile
                               ? const Color(0xFF10B981)
                               : const Color(0xFF8B7355))
                           .withOpacity(0.2),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
+                      blurRadius: 8, // Reduced from 10
+                      offset: const Offset(0, 3), // Reduced from 4
                     ),
                   ],
                 ),
                 child: Icon(
                   hasFile ? Icons.check_circle : Icons.audiotrack,
                   color: Colors.white,
-                  size: 28,
+                  size: 26, // Reduced from 28
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12), // Reduced from 16
               Text(
                 hasFile ? 'Audio File Selected!' : 'Upload Audio',
                 style: const TextStyle(
@@ -1294,7 +1316,7 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
                   height: 1.4,
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16), // Reduced from 20
               if (!hasFile)
                 _buildActionButton(
                   text: _isPickingFile ? 'Selecting...' : 'Choose Audio File',
@@ -1305,7 +1327,7 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
                 ),
               if (hasFile) ...[
                 _buildSelectedFileCard(),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12), // Reduced from 16
                 Row(
                   children: [
                     Expanded(
@@ -1327,7 +1349,7 @@ class _AudioUploadWidgetState extends State<AudioUploadWidget>
                         isPrimary: false,
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10), // Reduced from 12
                     Expanded(
                       flex: 2,
                       child: _buildActionButton(
@@ -1684,8 +1706,14 @@ class _EnhancedCameraWidgetState extends State<EnhancedCameraWidget>
       final result = status['result'];
       if (result != null) {
         final processingResult = _convertJobResultToProcessingResult(result);
+        
+        // Show success message briefly
+        _showSnackBar('Images processed successfully!', isError: false);
+        
+        // Wait a moment then navigate
+        await Future.delayed(Duration(milliseconds: 800));
+        NavigationService().navigateToProcessing();
         widget.onImagesProcessed(processingResult);
-        _showSnackBar('Images processed successfully! Navigating to Processing...', isError: false);
         
         setState(() {
           _selectedImages = [];

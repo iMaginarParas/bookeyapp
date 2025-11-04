@@ -12,6 +12,7 @@ import 'videos.dart';
 import 'video_manager.dart';
 import 'navigation_service.dart';
 import 'api_service.dart';
+import 'credit.dart';
 
 // HTTP Override to fix Railway.app DNS issues
 class MyHttpOverrides extends HttpOverrides {
@@ -57,7 +58,7 @@ class MyHttpOverrides extends HttpOverrides {
 
 }
 
-void main() {
+void main() async {
   // Override HTTP client for better Railway.app connectivity
   if (!kIsWeb) {
     HttpOverrides.global = MyHttpOverrides();
@@ -65,6 +66,15 @@ void main() {
   
   // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize RevenueCat
+  try {
+    await RevenueCatService.initialize();
+    print('RevenueCat initialized successfully');
+  } catch (e) {
+    print('Failed to initialize RevenueCat: $e');
+    // Continue with app launch even if RevenueCat fails
+  }
   
   runApp(const BookeyApp());
 }
