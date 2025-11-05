@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'wallet_service.dart';
 
 // RevenueCat service class for handling subscriptions and purchases
 class RevenueCatService {
-  static const String _apiKey = 'YOUR_REVENUECAT_API_KEY'; // Replace with your actual API key
+  static const String _apiKey = 'appl_QZBGZXoCUzmKjZejVOqcSEqJvfl'; // Your public RevenueCat API key
   static const String _entitlementId = 'pro_access';
   static const String _yearlyProductId = 'bookey_pro_yearly';
   
@@ -70,10 +71,10 @@ class RevenueCatService {
         throw Exception('Product not found: $productId');
       }
       
-      final customerInfo = await Purchases.purchasePackage(targetPackage);
+      final purchaseResult = await Purchases.purchasePackage(targetPackage);
       
-      // Check if the purchase was successful
-      if (customerInfo.entitlements.active.containsKey(_entitlementId)) {
+      // Check if the purchase was successful by checking customer info
+      if (purchaseResult.customerInfo.entitlements.active.containsKey(_entitlementId)) {
         return true;
       }
       
@@ -118,10 +119,11 @@ class RevenueCatService {
         throw Exception('Product not found: $productId');
       }
       
-      final customerInfo = await Purchases.purchasePackage(targetPackage);
+      final purchaseResult = await Purchases.purchasePackage(targetPackage);
       
       // For credit purchases, we consider it successful if no error occurred
-      return true;
+      // and we have a valid customer info response
+      return purchaseResult.customerInfo != null;
     } catch (e) {
       print('Credit purchase failed: $e');
       rethrow;
@@ -144,7 +146,8 @@ class RevenueCatService {
   static Future<CustomerInfo> restorePurchases() async {
     try {
       await initialize();
-      return await Purchases.restorePurchases();
+      final customerInfo = await Purchases.restorePurchases();
+      return customerInfo;
     } catch (e) {
       print('Error restoring purchases: $e');
       rethrow;
