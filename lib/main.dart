@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart'; // ✅ Added for haptic feedback
 
 import 'splashlog.dart';
 import 'home.dart';
@@ -77,6 +78,59 @@ void main() async {
   }
   
   runApp(const BookeyApp());
+}
+
+/// ✅ NEW: Initialize user data after login
+Future<void> initializeUserData(String jwtToken) async {
+  try {
+    print('🚀 Initializing user data...');
+    
+    // Load user's existing videos from backend
+    await VideoManager().loadUserVideos(jwtToken);
+    
+    print('✅ User data initialization completed');
+  } catch (e) {
+    print('⚠️ Error initializing user data: $e');
+    // Don't crash the app - just log the error
+  }
+}
+
+// ✅ ENHANCED: Haptic Feedback Service
+class HapticService {
+  // Light haptic feedback for UI interactions
+  static void lightImpact() {
+    if (!kIsWeb) {
+      HapticFeedback.lightImpact();
+    }
+  }
+  
+  // Medium haptic feedback for button presses
+  static void mediumImpact() {
+    if (!kIsWeb) {
+      HapticFeedback.mediumImpact();
+    }
+  }
+  
+  // Heavy haptic feedback for important actions
+  static void heavyImpact() {
+    if (!kIsWeb) {
+      HapticFeedback.heavyImpact();
+    }
+  }
+  
+  // Selection feedback for toggles/switches
+  static void selectionClick() {
+    if (!kIsWeb) {
+      HapticFeedback.selectionClick();
+    }
+  }
+  
+  // Vibration for notifications
+  static void vibrate() {
+    if (!kIsWeb) {
+      HapticFeedback.vibrate();
+    }
+  }
 }
 
 class BookeyApp extends StatelessWidget {
@@ -166,10 +220,15 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       _badgeController.forward().then((_) {
         _badgeController.reverse();
       });
+      // ✅ NEW: Haptic feedback for video completion
+      HapticService.mediumImpact();
     }
   }
 
   void _navigateToProcessing(ProcessingResult result) {
+    // ✅ NEW: Haptic feedback when navigating to processing
+    HapticService.lightImpact();
+    
     setState(() {
       _currentIndex = 1;
     });
@@ -178,6 +237,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   void _navigateToTab(int index) {
+    // ✅ NEW: Haptic feedback for tab changes
+    if (_currentIndex != index) {
+      HapticService.selectionClick();
+    }
+    
     setState(() {
       _currentIndex = index;
     });
@@ -186,7 +250,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0F),
+      backgroundColor: Colors.white,
       body: IndexedStack(
         index: _currentIndex,
         children: _pages,
@@ -194,18 +258,18 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       bottomNavigationBar: Container(
         height: 80,
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A23),
+          color: Colors.white,
           border: Border(
             top: BorderSide(
-              color: const Color(0xFF6366F1).withOpacity(0.2),
+              color: const Color(0xFF2563EB).withOpacity(0.1),
               width: 1,
             ),
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF6366F1).withOpacity(0.1),
+              color: const Color(0xFF2563EB).withOpacity(0.08),
               blurRadius: 20,
-              spreadRadius: 2,
+              spreadRadius: 0,
               offset: const Offset(0, -5),
             ),
           ],
@@ -214,20 +278,20 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             _buildNavItem(
-              icon: Icons.auto_awesome_outlined,
-              activeIcon: Icons.auto_awesome,
+              icon: Icons.add_circle_outline,
+              activeIcon: Icons.add_circle,
               label: 'Create',
               index: 0,
             ),
             _buildNavItem(
-              icon: Icons.hourglass_empty_outlined,
-              activeIcon: Icons.hourglass_bottom,
+              icon: Icons.sync_outlined,
+              activeIcon: Icons.sync,
               label: 'Processing',
               index: 1,
             ),
             _buildNavItem(
-              icon: Icons.video_library_outlined,
-              activeIcon: Icons.video_library,
+              icon: Icons.play_circle_outline,
+              activeIcon: Icons.play_circle,
               label: 'Videos',
               index: 2,
               showBadge: true,
@@ -235,8 +299,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               completedCount: _videoManager.completedVideosCount,
             ),
             _buildNavItem(
-              icon: Icons.person_outline,
-              activeIcon: Icons.person,
+              icon: Icons.person_outline_rounded,
+              activeIcon: Icons.person_rounded,
               label: 'Profile',
               index: 3,
             ),
@@ -259,6 +323,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     
     return GestureDetector(
       onTap: () {
+        // ✅ NEW: Haptic feedback for tab navigation
+        if (_currentIndex != index) {
+          HapticService.selectionClick();
+        }
+        
         setState(() {
           _currentIndex = index;
         });
@@ -279,28 +348,30 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                           ? _badgeAnimation.value 
                           : 1.0,
                       child: Container(
-                        padding: const EdgeInsets.all(6),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           gradient: isActive
                               ? const LinearGradient(
-                                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                                  colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
                                 )
                               : null,
-                          borderRadius: BorderRadius.circular(10),
+                          color: isActive ? null : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
                           boxShadow: isActive
                               ? [
                                   BoxShadow(
-                                    color: const Color(0xFF6366F1).withOpacity(0.3),
-                                    blurRadius: 8,
-                                    spreadRadius: 1,
+                                    color: const Color(0xFF2563EB).withOpacity(0.25),
+                                    blurRadius: 12,
+                                    spreadRadius: 0,
+                                    offset: const Offset(0, 2),
                                   ),
                                 ]
                               : null,
                         ),
                         child: Icon(
                           isActive ? activeIcon : icon,
-                          color: Colors.white,
-                          size: 22,
+                          color: isActive ? Colors.white : Color(0xFF64748B),
+                          size: 24,
                         ),
                       ),
                     );
@@ -310,8 +381,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 // Badge for video count
                 if (showBadge && badgeCount > 0)
                   Positioned(
-                    right: -2,
-                    top: -2,
+                    right: 0,
+                    top: 0,
                     child: Container(
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
@@ -320,9 +391,16 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                             : const Color(0xFFF59E0B), // Orange for processing
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: const Color(0xFF1A1A23),
+                          color: Colors.white,
                           width: 2,
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
                       constraints: const BoxConstraints(
                         minWidth: 18,
@@ -332,7 +410,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                         badgeCount > 99 ? '99+' : badgeCount.toString(),
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 10,
+                          fontSize: 9,
                           fontWeight: FontWeight.w700,
                         ),
                         textAlign: TextAlign.center,
@@ -346,10 +424,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               label,
               style: TextStyle(
                 color: isActive 
-                    ? Colors.white
-                    : Colors.white.withOpacity(0.6),
+                    ? const Color(0xFF2563EB)
+                    : const Color(0xFF64748B),
                 fontSize: 11,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
               ),
             ),
           ],

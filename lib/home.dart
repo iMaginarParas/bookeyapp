@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart'; // ✅ Added for haptic feedback
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Import the API service and input components
@@ -11,6 +12,44 @@ import 'input.dart';
 import 'wallet_service.dart';
 import 'credit.dart';
 import 'navigation_service.dart';
+
+// ✅ ENHANCED: Haptic Feedback Service
+class HapticService {
+  // Light haptic feedback for UI interactions
+  static void lightImpact() {
+    if (!kIsWeb) {
+      HapticFeedback.lightImpact();
+    }
+  }
+  
+  // Medium haptic feedback for button presses
+  static void mediumImpact() {
+    if (!kIsWeb) {
+      HapticFeedback.mediumImpact();
+    }
+  }
+  
+  // Heavy haptic feedback for important actions
+  static void heavyImpact() {
+    if (!kIsWeb) {
+      HapticFeedback.heavyImpact();
+    }
+  }
+  
+  // Selection feedback for toggles/switches
+  static void selectionClick() {
+    if (!kIsWeb) {
+      HapticFeedback.selectionClick();
+    }
+  }
+  
+  // Vibration for notifications
+  static void vibrate() {
+    if (!kIsWeb) {
+      HapticFeedback.vibrate();
+    }
+  }
+}
 
 class HomePage extends StatefulWidget {
   final Function(ProcessingResult) onContentProcessed;
@@ -40,12 +79,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     super.initState();
 
     _fadeController = AnimationController(
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 600),
       vsync: this,
     );
 
     _slideController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
+      duration: const Duration(milliseconds: 800),
       vsync: this,
     );
 
@@ -54,7 +93,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
 
     _slideAnimation =
-        Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
+        Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(
       CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic),
     );
 
@@ -63,6 +102,22 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     
     // Load credits when page initializes
     _loadCredits();
+  }
+
+  // ✅ ENHANCED: Pull-to-refresh with haptic feedback
+  Future<void> _refreshContent() async {
+    // ✅ NEW: Haptic feedback for pull-to-refresh start
+    HapticService.lightImpact();
+    
+    await _loadCredits();
+    
+    // ✅ NEW: Haptic feedback for refresh completion
+    HapticService.selectionClick();
+    
+    // Show a brief feedback message
+    if (mounted) {
+      _showSnackBar('Content refreshed!', isError: false);
+    }
   }
 
   Future<void> _loadCredits() async {
@@ -91,6 +146,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   void _navigateToWallet() {
+    // ✅ NEW: Haptic feedback for wallet navigation
+    HapticService.mediumImpact();
+    
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => const CreditPage(),
@@ -110,6 +168,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Future<void> _pickPdfFile() async {
     try {
+      // ✅ NEW: Haptic feedback for file picker
+      HapticService.lightImpact();
+      
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf'],
@@ -118,6 +179,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       );
 
       if (result != null) {
+        // ✅ NEW: Haptic feedback for successful file selection
+        HapticService.mediumImpact();
+        
         setState(() {
           if (kIsWeb) {
             _selectedWebFile = result.files.single;
@@ -131,15 +195,22 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         _showSnackBar('PDF selected successfully!', isError: false);
       }
     } catch (e) {
+      // ✅ NEW: Haptic feedback for error
+      HapticService.heavyImpact();
       _showSnackBar('Error selecting PDF: $e', isError: true);
     }
   }
 
   Future<void> _processPdf() async {
     if (_selectedFile == null && _selectedWebFile == null) {
+      // ✅ NEW: Haptic feedback for error
+      HapticService.heavyImpact();
       _showSnackBar('Please select an ebook file first', isError: true);
       return;
     }
+
+    // ✅ NEW: Haptic feedback for processing start
+    HapticService.mediumImpact();
 
     setState(() {
       _isProcessing = true;
@@ -151,6 +222,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           maxConcurrent: 5);
 
       if (result.success) {
+        // ✅ NEW: Haptic feedback for success
+        HapticService.lightImpact();
+        
         // Show success message briefly
         _showSnackBar('Ebook processed successfully!', isError: false);
         
@@ -162,6 +236,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         throw Exception(result.message);
       }
     } catch (e) {
+      // ✅ NEW: Haptic feedback for error
+      HapticService.heavyImpact();
       _showSnackBar('Failed to process ebook: ${e.toString()}', isError: true);
     } finally {
       setState(() {
@@ -193,347 +269,240 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   void _handleContentProcessed(ProcessingResult result) {
-    // Show immediate feedback
-    _showSnackBar('Content processed successfully! Navigating to Processing...',
-        isError: false);
-
-    // Small delay for user to see the success message
-    Future.delayed(const Duration(milliseconds: 800), () {
-      // Navigate to processing tab and pass the result
-      widget.onContentProcessed(result);
-    });
+    // ✅ NEW: Haptic feedback for content processing
+    HapticService.mediumImpact();
+    widget.onContentProcessed(result);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF9F7F4), // Cream background
-      body: FadeTransition(
-        opacity: _fadeAnimation,
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              _buildAppBar(),
-              SliverPadding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate([
-                    _buildWelcomeSection(),
-                    const SizedBox(height: 20),
-                    _buildMainContent(),
-                    const SizedBox(height: 40),
-                  ]),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAppBar() {
-    return SliverAppBar(
-      expandedHeight: 100,
-      floating: false,
-      pinned: true,
       backgroundColor: Colors.white,
-      elevation: 0,
-      shadowColor: Colors.transparent,
-      surfaceTintColor: Colors.transparent,
-      flexibleSpace: FlexibleSpaceBar(
-        background: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(24),
-              bottomRight: Radius.circular(24),
-            ),
-          ),
-        ),
-        title: Row(
+      body: RefreshIndicator(
+        onRefresh: _refreshContent,
+        color: const Color(0xFF2563EB),
+        backgroundColor: Colors.white,
+        child: Column(
           children: [
+            // ✅ FIXED: Compact header with credit balance (no scroll, no overflow)
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 50,
+                bottom: 16,
+              ),
               decoration: BoxDecoration(
-                color: const Color(0xFF2D2D2D),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.auto_awesome,
-                color: Colors.white,
-                size: 18,
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'Bookey',
-              style: TextStyle(
-                color: Color(0xFF2D2D2D),
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
-              ),
-            ),
-            const Spacer(),
-            GestureDetector(
-              onTap: _navigateToWallet,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF5F3F0), // Beige
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: const Color(0xFFE8E3DD),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF2563EB).withOpacity(0.05),
+                    const Color(0xFF3B82F6).withOpacity(0.03),
+                  ],
+                ),
+                border: Border(
+                  bottom: BorderSide(
+                    color: const Color(0xFF2563EB).withOpacity(0.1),
                     width: 1,
                   ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.account_balance_wallet,
-                      color: Color(0xFF8B7355), // Brown tone
-                      size: 14,
-                    ),
-                    SizedBox(width: 4),
-                    _isLoadingCredits
-                        ? SizedBox(
-                            width: 12,
-                            height: 12,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 1.5,
-                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF8B7355)),
-                            ),
-                          )
-                        : Text(
-                            '$_creditBalance',
-                            style: TextStyle(
-                              color: Color(0xFF8B7355),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Title - Made flexible to prevent overflow
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Create Content',
+                          style: TextStyle(
+                            color: Color(0xFF1E293B),
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
                           ),
-                    SizedBox(width: 4),
-                    Icon(
-                      Icons.arrow_forward_ios,
-                      color: Color(0xFF8B7355),
-                      size: 10,
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Choose your creation method',
+                          style: TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w400,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
-      ),
-    );
-  }
-
-  Widget _buildWelcomeSection() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF2D2D2D),
-            Color(0xFF3D3D3D),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.rocket_launch,
-              color: Colors.white,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 16),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Transform Ideas',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    height: 1.1,
-                    letterSpacing: -0.3,
                   ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Turn your content into stunning videos',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white70,
-                    fontWeight: FontWeight.w400,
-                    height: 1.3,
+                  SizedBox(width: 12),
+                  // Credit balance
+                  GestureDetector(
+                    onTap: _navigateToWallet,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: const Color(0xFF2563EB).withOpacity(0.3),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF2563EB).withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.account_balance_wallet,
+                            color: const Color(0xFF2563EB),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          if (_isLoadingCredits)
+                            const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Color(0xFF2563EB),
+                                ),
+                              ),
+                            )
+                          else
+                            Text(
+                              '$_creditBalance',
+                              style: const TextStyle(
+                                color: Color(0xFF1E293B),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildMainContent() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Content Input Methods',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF2D2D2D),
-                letterSpacing: -0.3,
+            // ✅ FIXED: Compact tab selector (no scroll)
+            Container(
+              height: 70,
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _buildTabButton('Story Maker', Icons.auto_stories, 0),
+                          const SizedBox(width: 8),
+                          _buildTabButton('Audio Book', Icons.headphones, 1),
+                          const SizedBox(width: 8),
+                          _buildTabButton('Images', Icons.image, 2),
+                          const SizedBox(width: 8),
+                          _buildTabButton('Ebook', Icons.menu_book, 3),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Choose your preferred input method to get started',
-              style: TextStyle(
-                fontSize: 14,
-                color: const Color(0xFF8B7355),
-                fontWeight: FontWeight.w400,
+
+            // ✅ FIXED: Main content area with exact remaining height
+            Expanded(
+              child: AnimatedBuilder(
+                animation: _fadeAnimation,
+                builder: (context, child) {
+                  return FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: SlideTransition(
+                      position: _slideAnimation,
+                      child: Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.all(16),
+                        child: _buildTabContent(),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
-            const SizedBox(height: 20),
-            _buildTabSelector(),
-            const SizedBox(height: 20),
-            _buildTabContent(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTabSelector() {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F3F0), // Beige background
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildTabButton(
-              title: 'Story Maker',
-              icon: Icons.auto_awesome,
-              isSelected: _selectedTabIndex == 0,
-              onTap: () => setState(() => _selectedTabIndex = 0),
-            ),
-          ),
-          const SizedBox(width: 3),
-          Expanded(
-            child: _buildTabButton(
-              title: 'Audio Book',
-              icon: Icons.audiotrack,
-              isSelected: _selectedTabIndex == 1,
-              onTap: () => setState(() => _selectedTabIndex = 1),
-            ),
-          ),
-          const SizedBox(width: 3),
-          Expanded(
-            child: _buildTabButton(
-              title: 'Images',
-              icon: Icons.photo_camera,
-              isSelected: _selectedTabIndex == 2,
-              onTap: () => setState(() => _selectedTabIndex = 2),
-            ),
-          ),
-          const SizedBox(width: 3),
-          Expanded(
-            child: _buildTabButton(
-              title: 'Ebook',
-              icon: Icons.picture_as_pdf,
-              isSelected: _selectedTabIndex == 3,
-              onTap: () => setState(() => _selectedTabIndex = 3),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabButton({
-    required String title,
-    required IconData icon,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
+  Widget _buildTabButton(String title, IconData icon, int index) {
+    final isSelected = _selectedTabIndex == index;
+    
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        // ✅ NEW: Haptic feedback for tab selection
+        HapticService.selectionClick();
+        
+        setState(() {
+          _selectedTabIndex = index;
+        });
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF2D2D2D) : Colors.transparent,
-          borderRadius: BorderRadius.circular(11),
+          gradient: isSelected
+              ? LinearGradient(
+                  colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
+                )
+              : null,
+          color: isSelected ? null : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? Colors.transparent
+                : const Color(0xFF2563EB).withOpacity(0.2),
+            width: 1,
+          ),
+          boxShadow: isSelected ? [
+            BoxShadow(
+              color: const Color(0xFF2563EB).withOpacity(0.2),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ] : null,
         ),
-        child: Column(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
-              color: isSelected ? Colors.white : const Color(0xFF8B7355),
+              color: isSelected ? Colors.white : Color(0xFF64748B),
               size: 16,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(width: 6),
             Text(
               title,
               style: TextStyle(
-                color: isSelected ? Colors.white : const Color(0xFF8B7355),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+                color: isSelected ? Colors.white : Color(0xFF64748B),
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
               ),
             ),
           ],
@@ -545,136 +514,170 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   Widget _buildTabContent() {
     switch (_selectedTabIndex) {
       case 0: // Story Maker
-        return StoryGeneratorWidget(
+        return CompactStoryGeneratorWidget(
           key: const ValueKey('story_generator'),
           onStoryGenerated: _handleContentProcessed,
         );
       case 1: // Audio Book
-        return AudioUploadWidget(
+        return CompactAudioUploadWidget(
           key: const ValueKey('audio_upload'),
           onAudioProcessed: _handleContentProcessed,
         );
       case 2: // Images/OCR
-        return EnhancedCameraWidget(
+        return CompactCameraWidget(
           key: const ValueKey('image_upload'),
           onImagesProcessed: _handleContentProcessed,
         );
       case 3: // Ebook Upload
-        return _buildPdfTab();
+        return _buildCompactPdfTab();
       default:
-        return _buildPdfTab();
+        return _buildCompactPdfTab();
     }
   }
 
-  Widget _buildPdfTab() {
+  // ✅ COMPACT: PDF upload widget that fits without scrolling
+  Widget _buildCompactPdfTab() {
     final hasFile = _selectedFile != null || _selectedWebFile != null;
 
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: hasFile ? const Color(0xFFF0FDF4) : const Color(0xFFF5F3F0),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: hasFile
-              ? const Color(0xFF10B981).withOpacity(0.3)
-              : const Color(0xFFE8E3DD),
-          width: 1,
+          color: const Color(0xFF2563EB).withOpacity(0.2),
+          width: 1.5,
         ),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color:
-                  hasFile ? const Color(0xFF10B981) : const Color(0xFF8B7355),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: (hasFile
-                          ? const Color(0xFF10B981)
-                          : const Color(0xFF8B7355))
-                      .withOpacity(0.2),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Icon(
-              hasFile ? Icons.check_circle : Icons.picture_as_pdf,
-              color: Colors.white,
-              size: 28,
-            ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2563EB).withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
           ),
-          const SizedBox(height: 16),
-          Text(
-            hasFile ? 'Ebook File Selected!' : 'Upload Ebook Document',
-            style: const TextStyle(
-              color: Color(0xFF2D2D2D),
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            hasFile
-                ? 'Ready to process with AI text cleaning and enhancement'
-                : 'Upload PDF/EPUB files for AI-powered text extraction and cleaning',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Color(0xFF8B7355),
-              fontSize: 14,
-              fontWeight: FontWeight.w400,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 20),
-          if (!hasFile)
-            _buildActionButton(
-              text: 'Choose Ebook File',
-              icon: Icons.upload_file,
-              onPressed: _pickPdfFile,
-              isPrimary: true,
-            ),
-          if (hasFile) ...[
-            _buildSelectedFileCard(),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildActionButton(
-                    text: 'Change File',
-                    icon: Icons.swap_horiz,
-                    onPressed: () {
-                      setState(() {
-                        _selectedFile = null;
-                        _selectedWebFile = null;
-                      });
-                    },
-                    isPrimary: false,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: _buildActionButton(
-                    text: _isProcessing ? 'Processing...' : 'Process Ebook',
-                    icon: _isProcessing ? null : Icons.auto_awesome,
-                    onPressed: _isProcessing ? null : _processPdf,
-                    isPrimary: true,
-                    isLoading: _isProcessing,
-                  ),
-                ),
-              ],
-            ),
-          ],
         ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Icon and status
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                gradient: hasFile
+                    ? LinearGradient(
+                        colors: [Color(0xFF10B981), Color(0xFF059669)],
+                      )
+                    : LinearGradient(
+                        colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
+                      ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: (hasFile ? const Color(0xFF10B981) : const Color(0xFF2563EB))
+                        .withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Icon(
+                hasFile ? Icons.check_circle : Icons.picture_as_pdf,
+                color: Colors.white,
+                size: 36,
+              ),
+            ),
+            
+            const SizedBox(height: 24),
+            
+            // Title and description
+            Text(
+              hasFile ? 'Ebook Ready!' : 'Upload Ebook',
+              style: const TextStyle(
+                color: Color(0xFF1E293B),
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            
+            const SizedBox(height: 8),
+            
+            Text(
+              hasFile
+                  ? 'Ready to process with AI'
+                  : 'PDF files for AI text extraction',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+            
+            const SizedBox(height: 32),
+            
+            // File info card (if file selected)
+            if (hasFile) ...[
+              _buildCompactFileCard(),
+              const SizedBox(height: 20),
+            ],
+            
+            // Action buttons
+            if (!hasFile)
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: _buildActionButton(
+                  text: 'Choose Ebook File',
+                  icon: Icons.upload_file,
+                  onPressed: _pickPdfFile,
+                  isPrimary: true,
+                ),
+              ),
+            
+            if (hasFile)
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 48,
+                      child: _buildActionButton(
+                        text: 'Change',
+                        icon: Icons.swap_horiz,
+                        onPressed: () {
+                          setState(() {
+                            _selectedFile = null;
+                            _selectedWebFile = null;
+                          });
+                        },
+                        isPrimary: false,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: SizedBox(
+                      height: 48,
+                      child: _buildActionButton(
+                        text: _isProcessing ? 'Processing...' : 'Process',
+                        icon: _isProcessing ? null : Icons.auto_awesome,
+                        onPressed: _isProcessing ? null : _processPdf,
+                        isPrimary: true,
+                        isLoading: _isProcessing,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildSelectedFileCard() {
+  Widget _buildCompactFileCard() {
     final fileName = kIsWeb
         ? (_selectedWebFile?.name ?? 'Ebook Document')
         : (_selectedFile?.path.split('/').last ?? 'Ebook Document');
@@ -682,57 +685,37 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFF10B981).withOpacity(0.2),
+          color: const Color(0xFF10B981).withOpacity(0.3),
+          width: 1,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: const Color(0xFF10B981).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(
               Icons.picture_as_pdf,
               color: Color(0xFF10B981),
-              size: 20,
+              size: 18,
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  fileName,
-                  style: const TextStyle(
-                    color: Color(0xFF2D2D2D),
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                const Text(
-                  'AI text extraction ready',
-                  style: TextStyle(
-                    color: Color(0xFF10B981),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+            child: Text(
+              fileName,
+              style: const TextStyle(
+                color: Color(0xFF1E293B),
+                fontWeight: FontWeight.w500,
+                fontSize: 14,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -747,67 +730,56 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     required bool isPrimary,
     bool isLoading = false,
   }) {
-    return Container(
-      height: 44,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: isPrimary
-            ? [
-                BoxShadow(
-                  color: const Color(0xFF2D2D2D).withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ]
-            : null,
-      ),
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor:
-              isPrimary ? const Color(0xFF2D2D2D) : Colors.transparent,
-          foregroundColor: isPrimary ? Colors.white : const Color(0xFF8B7355),
-          disabledBackgroundColor:
-              isPrimary ? const Color(0xFFF3F4F6) : Colors.transparent,
-          disabledForegroundColor: const Color(0xFF9CA3AF),
-          elevation: 0,
-          shadowColor: Colors.transparent,
-          side: isPrimary
-              ? null
-              : const BorderSide(
-                  color: Color(0xFFE8E3DD),
-                  width: 1,
-                ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: isLoading
-            ? const SizedBox(
-                height: 16,
-                width: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (icon != null) ...[
-                    Icon(icon, size: 16),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(
-                    text,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
+    return ElevatedButton(
+      onPressed: onPressed != null ? () {
+        // ✅ NEW: Haptic feedback for button press
+        HapticService.lightImpact();
+        onPressed();
+      } : null,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: isPrimary 
+            ? const Color(0xFF2563EB)
+            : Colors.white,
+        foregroundColor: isPrimary ? Colors.white : Color(0xFF2563EB),
+        disabledBackgroundColor: const Color(0xFFE2E8F0),
+        disabledForegroundColor: const Color(0xFF94A3B8),
+        elevation: 0,
+        shadowColor: Colors.transparent,
+        side: isPrimary
+            ? null
+            : BorderSide(
+                color: const Color(0xFF2563EB).withOpacity(0.3),
+                width: 1.5,
               ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
       ),
+      child: isLoading
+          ? const SizedBox(
+              height: 16,
+              width: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 16),
+                  const SizedBox(width: 8),
+                ],
+                Text(
+                  text,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }

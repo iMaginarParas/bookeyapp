@@ -164,7 +164,11 @@ class GeneratedVideo {
   final int totalScenes;
   final Duration? duration;
   final int? fileSize;
-  final int? creditsUsed; // ← ADDED
+  final int? creditsUsed;
+  // ✅ NEW: Backend persistence fields
+  final String? backendVideoId;  // The video ID from the backend database
+  final bool isSavedToBackend;   // Whether this video is saved to backend
+  final String? originalText;    // Store original text for retry functionality
 
   GeneratedVideo({
     required this.id,
@@ -178,11 +182,15 @@ class GeneratedVideo {
     required this.totalScenes,
     this.duration,
     this.fileSize,
-    this.creditsUsed, // ← ADDED
+    this.creditsUsed,
+    // ✅ NEW fields
+    this.backendVideoId,
+    this.isSavedToBackend = false,
+    this.originalText,
   });
 
   factory GeneratedVideo.fromVideoStatus(
-      VideoProcessingStatus status, String title) {
+      VideoProcessingStatus status, String title, {String? originalText}) {
     return GeneratedVideo(
       id: status.jobId,
       title: title,
@@ -195,7 +203,8 @@ class GeneratedVideo {
       totalScenes: status.totalScenes,
       duration: status.duration,
       fileSize: status.fileSize,
-      creditsUsed: status.creditsUsed, // ← ADDED
+      creditsUsed: status.creditsUsed,
+      originalText: originalText,
     );
   }
 
@@ -208,7 +217,11 @@ class GeneratedVideo {
     int? totalScenes,
     Duration? duration,
     int? fileSize,
-    int? creditsUsed, // ← ADDED
+    int? creditsUsed,
+    // ✅ NEW fields
+    String? backendVideoId,
+    bool? isSavedToBackend,
+    String? originalText,
   }) {
     return GeneratedVideo(
       id: id,
@@ -222,7 +235,11 @@ class GeneratedVideo {
       totalScenes: totalScenes ?? this.totalScenes,
       duration: duration ?? this.duration,
       fileSize: fileSize ?? this.fileSize,
-      creditsUsed: creditsUsed ?? this.creditsUsed, // ← ADDED
+      creditsUsed: creditsUsed ?? this.creditsUsed,
+      // ✅ NEW fields
+      backendVideoId: backendVideoId ?? this.backendVideoId,
+      isSavedToBackend: isSavedToBackend ?? this.isSavedToBackend,
+      originalText: originalText ?? this.originalText,
     );
   }
 
@@ -247,6 +264,59 @@ class GeneratedVideo {
     } else {
       return '${(fileSize! / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
+  }
+
+  String get formattedCredits {
+    if (creditsUsed == null) return '';
+    return '${creditsUsed} credits';
+  }
+
+  bool get isCompleted => status == 'completed';
+  bool get isFailed => status == 'failed';
+  bool get isProcessing => status == 'processing';
+
+  /// ✅ NEW: Create GeneratedVideo from backend video data
+  factory GeneratedVideo.fromBackendData(Map<String, dynamic> data) {
+    // Handle video URL conversion
+    String? playbackUrl = data['video_url'];
+    
+    // Convert relative download URLs to absolute URLs
+    if (playbackUrl != null && playbackUrl.startsWith('/download/')) {
+      playbackUrl = 'https://ch2vi-production.up.railway.app$playbackUrl';
+    }
+    
+    // If no video_url, try playback_url
+    if (playbackUrl == null && data['playback_url'] != null) {
+      playbackUrl = data['playback_url'];
+      if (playbackUrl!.startsWith('/download/') || playbackUrl.startsWith('/play/')) {
+        playbackUrl = 'https://ch2vi-production.up.railway.app$playbackUrl';
+      }
+    }
+    
+    return GeneratedVideo(
+      id: data['id'] ?? '',
+      title: data['title'] ?? 'Untitled Video',
+      status: data['video_status'] ?? 'unknown',
+      progress: data['video_status'] == 'completed' 
+          ? 'Video completed and ready for playback' 
+          : (data['video_status'] == 'processing' ? 'Processing...' : 'Unknown status'),
+      playbackUrl: playbackUrl,
+      scenesCompleted: data['scenes_count'] ?? 0,
+      totalScenes: data['scenes_count'] ?? 0,
+      creditsUsed: data['credits_charged'],
+      thumbnailUrl: data['thumbnail_url'],
+      duration: data['duration_seconds'] != null 
+          ? Duration(seconds: data['duration_seconds']) 
+          : null,
+      fileSize: data['file_size_mb'] != null 
+          ? (data['file_size_mb'] * 1024 * 1024).round() // Convert MB to bytes
+          : null,
+      createdAt: data['created_at'] != null 
+          ? DateTime.tryParse(data['created_at']) ?? DateTime.now()
+          : DateTime.now(),
+      backendVideoId: data['id'],
+      isSavedToBackend: true,
+    );
   }
 }
 

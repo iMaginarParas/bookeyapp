@@ -72,98 +72,105 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA), // Light gray background
-      appBar: _buildAppBar(),
+      backgroundColor: Colors.white,
       body: FadeTransition(
         opacity: _fadeAnimation,
-        child: _videoManager.videos.isEmpty
-            ? _buildEmptyState()
-            : _buildVideosGrid(),
-      ),
-    );
-  }
-
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      backgroundColor: Colors.white,
-      elevation: 0,
-      shadowColor: Colors.transparent,
-      surfaceTintColor: Colors.transparent,
-      title: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-              ),
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF667EEA).withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+        child: CustomScrollView(
+          slivers: [
+            // Custom app bar
+            SliverAppBar(
+              expandedHeight: 120,
+              floating: false,
+              pinned: true,
+              backgroundColor: Colors.white,
+              elevation: 0,
+              flexibleSpace: FlexibleSpaceBar(
+                background: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        const Color(0xFF2563EB).withOpacity(0.05),
+                        const Color(0xFF3B82F6).withOpacity(0.03),
+                      ],
+                    ),
+                  ),
+                  padding: const EdgeInsets.only(
+                    left: 20,
+                    right: 20,
+                    top: 50,
+                    bottom: 16,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.play_circle,
+                            color: Color(0xFF2563EB),
+                            size: 28,
+                          ),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'LIBRARY',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1E293B),
+                              letterSpacing: 2,
+                            ),
+                          ),
+                          const Spacer(),
+                          // Star icon
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFBBF24),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.star,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
-            child: const Icon(
-              Icons.video_library,
-              color: Colors.white,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'My Videos',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1A202C),
-                  letterSpacing: -0.3,
-                ),
-              ),
-              Text(
-                '${_videoManager.videos.length} videos',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF718096),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ],
+            
+            // Video grid or empty state
+            _videoManager.videos.isEmpty
+                ? SliverFillRemaining(
+                    child: _buildEmptyState(),
+                  )
+                : SliverPadding(
+                    padding: const EdgeInsets.all(20),
+                    sliver: SliverGrid(
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        childAspectRatio: 0.75,
+                        mainAxisSpacing: 16,
+                        crossAxisSpacing: 16,
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final video = _videoManager.videos[index];
+                          return _buildVideoCard(video);
+                        },
+                        childCount: _videoManager.videos.length,
+                      ),
+                    ),
+                  ),
+          ],
+        ),
       ),
-      actions: [
-        // Refresh button
-        IconButton(
-          onPressed: () {
-            _debugPrintVideoInfo();
-            _videoManager.printDebugInfo();
-            _showSnackBar('Debug info printed to console');
-          },
-          icon: const Icon(
-            Icons.info_outline,
-            color: Color(0xFF667EEA),
-          ),
-          tooltip: 'Debug Info',
-        ),
-        IconButton(
-          onPressed: () {
-            setState(() {});
-            _showSnackBar('Videos refreshed');
-          },
-          icon: const Icon(
-            Icons.refresh,
-            color: Color(0xFF667EEA),
-          ),
-          tooltip: 'Refresh',
-        ),
-        const SizedBox(width: 8),
-      ],
     );
   }
 
@@ -175,9 +182,13 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: const Color(0xFF2563EB).withOpacity(0.1),
+            width: 1,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: const Color(0xFF2563EB).withOpacity(0.05),
               blurRadius: 30,
               offset: const Offset(0, 10),
             ),
@@ -194,8 +205,8 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    const Color(0xFF667EEA).withOpacity(0.1),
-                    const Color(0xFF764BA2).withOpacity(0.1),
+                    const Color(0xFF2563EB).withOpacity(0.1),
+                    const Color(0xFF3B82F6).withOpacity(0.05),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(30),
@@ -203,7 +214,7 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
               child: const Icon(
                 Icons.video_library_outlined,
                 size: 48,
-                color: Color(0xFF667EEA),
+                color: Color(0xFF2563EB),
               ),
             ),
             const SizedBox(height: 32),
@@ -212,17 +223,17 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF1A202C),
+                color: Color(0xFF1E293B),
                 letterSpacing: -0.5,
               ),
             ),
             const SizedBox(height: 12),
             const Text(
-              'Create your first video from the Processing tab',
+              'Create your first video from the Create tab',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 16,
-                color: Color(0xFF718096),
+                color: Color(0xFF64748B),
                 fontWeight: FontWeight.w400,
                 height: 1.5,
               ),
@@ -231,7 +242,7 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: const Color(0xFFF7FAFC),
+                color: const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: const Color(0xFFE2E8F0),
@@ -244,7 +255,7 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
                     height: 48,
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                        colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
                       ),
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -258,7 +269,7 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
                   const Text(
                     'How to Create Videos',
                     style: TextStyle(
-                      color: Color(0xFF2D3748),
+                      color: Color(0xFF1E293B),
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
                     ),
@@ -268,7 +279,7 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
                     '1. Upload content in the Create tab\n2. Process chapters in Processing tab\n3. Click "Create Video" on any chapter\n4. Your videos will appear here!',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Color(0xFF718096),
+                      color: Color(0xFF64748B),
                       fontSize: 15,
                       height: 1.6,
                     ),
@@ -282,24 +293,6 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildVideosGrid() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: GridView.builder(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 1,
-          childAspectRatio: 1.3, // Adjusted for better proportions
-          mainAxisSpacing: 16,
-        ),
-        itemCount: _videoManager.videos.length,
-        itemBuilder: (context, index) {
-          final video = _videoManager.videos[index];
-          return _buildVideoCard(video);
-        },
-      ),
-    );
-  }
-
   Widget _buildVideoCard(GeneratedVideo video) {
     Color statusColor;
     IconData statusIcon;
@@ -307,326 +300,279 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
 
     switch (video.status) {
       case 'completed':
-        statusColor = const Color(0xFF48BB78);
-        statusIcon = Icons.play_circle_filled;
-        statusText = 'Ready to Watch';
+        statusColor = const Color(0xFF10B981);
+        statusIcon = Icons.check_circle;
+        statusText = 'Ready';
         break;
       case 'failed':
-        statusColor = const Color(0xFFE53E3E);
+        statusColor = const Color(0xFFEF4444);
         statusIcon = Icons.error_outline;
-        statusText = 'Generation Failed';
+        statusText = 'Failed';
         break;
       case 'processing':
       default:
-        statusColor = const Color(0xFFED8936);
-        statusIcon = Icons.hourglass_empty;
-        statusText = 'Processing Video...';
+        statusColor = const Color(0xFFF59E0B);
+        statusIcon = Icons.sync;
+        statusText = 'Processing';
         break;
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+    return GestureDetector(
+      onTap: () {
+        if (video.status == 'completed') {
+          _playVideo(video);
+        }
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0xFFFBBF24),
+            width: 3,
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Video thumbnail/preview area
-          Expanded(
-            flex: 3,
-            child: GestureDetector(
-              onTap: () {
-                if (video.status == 'completed') {
-                  _playVideo(video);
-                }
-              },
-              child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      statusColor.withOpacity(0.05),
-                      statusColor.withOpacity(0.1),
-                    ],
-                  ),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                ),
-                child: Stack(
-                  children: [
-                    // Thumbnail or placeholder
-                    if (video.status == 'completed' && video.thumbnailUrl != null && video.thumbnailUrl!.isNotEmpty)
-                      ClipRRect(
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                        child: Image.network(
-                          video.thumbnailUrl!,
-                          width: double.infinity,
-                          height: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            print('❌ Failed to load thumbnail: ${video.thumbnailUrl}');
-                            return _buildPlaceholderThumbnail(statusColor, statusIcon, statusText, video);
-                          },
-                          loadingBuilder: (context, child, loadingProgress) {
-                            if (loadingProgress == null) {
-                              print('✅ Thumbnail loaded successfully: ${video.thumbnailUrl}');
-                              return child;
-                            }
-                            return _buildPlaceholderThumbnail(statusColor, statusIcon, statusText, video);
-                          },
-                        ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(17),
+          child: Stack(
+            children: [
+              // Background with thumbnail or gradient
+              Positioned.fill(
+                child: video.status == 'completed' && 
+                       video.thumbnailUrl != null && 
+                       video.thumbnailUrl!.isNotEmpty
+                    ? Image.network(
+                        video.thumbnailUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return _buildGradientBackground(video);
+                        },
                       )
-                    else
-                      _buildPlaceholderThumbnail(statusColor, statusIcon, statusText, video),
-                    
-                    // Overlay gradient for better text visibility
-                    if (video.status == 'completed' && video.thumbnailUrl != null && video.thumbnailUrl!.isNotEmpty)
-                      Container(
-                        decoration: BoxDecoration(
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withOpacity(0.3),
-                            ],
+                    : _buildGradientBackground(video),
+              ),
+              
+              // Dark overlay for better text visibility
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.3),
+                        Colors.black.withOpacity(0.6),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              
+              // Three dots menu (top right)
+              Positioned(
+                top: 12,
+                right: 12,
+                child: GestureDetector(
+                  onTap: () => _showVideoOptions(video),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Icon(
+                      Icons.more_horiz,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                ),
+              ),
+              
+              // Content - Title and info at bottom
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 16,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Large title (like book title)
+                    Text(
+                      video.title.isNotEmpty ? video.title : 'Untitled Video',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        height: 1.2,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black45,
+                            offset: Offset(0, 1),
+                            blurRadius: 3,
                           ),
-                        ),
+                        ],
                       ),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     
-                    // Play button overlay for completed videos
-                    if (video.status == 'completed')
-                      Center(
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.7),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.play_arrow,
-                            size: 32,
-                            color: Colors.white,
-                          ),
-                        ),
+                    const SizedBox(height: 8),
+                    
+                    // Subtitle with golden color
+                    Text(
+                      video.title.isNotEmpty ? video.title : 'Untitled Video',
+                      style: const TextStyle(
+                        color: Color(0xFFFBBF24),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        height: 1.2,
                       ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     
-                    // Status badge
-                    Positioned(
-                      top: 16,
-                      right: 16,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: statusColor,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: statusColor.withOpacity(0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Text(
-                          video.status.toUpperCase(),
+                    const SizedBox(height: 12),
+                    
+                    // Date and pages
+                    Row(
+                      children: [
+                        Text(
+                          _formatCreatedAt(video.createdAt),
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
-                      ),
-                    ),
-                    // Duration badge (for completed videos)
-                    if (video.status == 'completed' && video.duration != null)
-                      Positioned(
-                        bottom: 16,
-                        left: 16,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.7),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
+                        const Spacer(),
+                        if (video.duration != null)
+                          Text(
                             video.formattedDuration,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          )
+                        else if (video.totalScenes != null)
+                          Text(
+                            '${video.totalScenes} scenes',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
-                        ),
-                      ),
+                      ],
+                    ),
                   ],
                 ),
               ),
-            ),
-          ),
-          // Video info
-          Expanded(
-            flex: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Title and metadata
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        video.title,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A202C),
-                          letterSpacing: -0.2,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+              
+              // Play button overlay for completed videos
+              if (video.status == 'completed')
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 3,
                       ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.access_time,
-                            size: 14,
-                            color: Color(0xFF718096),
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              _formatCreatedAt(video.createdAt),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF718096),
-                                fontWeight: FontWeight.w500,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (video.creditsUsed != null) ...[
-                            const SizedBox(width: 8),
-                            const Icon(
-                              Icons.account_balance_wallet,
-                              size: 14,
-                              color: Color(0xFF718096),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${video.creditsUsed}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF718096),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
+                    ),
+                    child: const Icon(
+                      Icons.play_arrow,
+                      size: 40,
+                      color: Colors.white,
+                    ),
                   ),
-                  // Action buttons
-                  Row(
-                    children: [
-                      if (video.status == 'completed') ...[
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _playVideo(video),
-                            icon: const Icon(Icons.play_arrow, size: 16),
-                            label: const Text(
-                              'Watch',
-                              style: TextStyle(fontSize: 13),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF667EEA),
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                          ),
+                ),
+              
+              // Status indicator (processing/failed)
+              if (video.status != 'completed')
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: statusColor,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: statusColor.withOpacity(0.4),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
                         ),
-                        const SizedBox(width: 8),
-                      ] else if (video.status == 'failed') ...[
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => _showRetryDialog(video),
-                            icon: const Icon(Icons.refresh, size: 16),
-                            label: const Text(
-                              'Retry',
-                              style: TextStyle(fontSize: 13),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFFE53E3E),
-                              side: const BorderSide(color: Color(0xFFE53E3E)),
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                      ] else ...[
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              '${video.scenesCompleted}/${video.totalScenes} scenes',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: statusColor,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
                       ],
-                      Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                          borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          statusIcon,
+                          color: Colors.white,
+                          size: 20,
                         ),
-                        child: IconButton(
-                          onPressed: () => _showVideoOptions(video),
-                          icon: const Icon(
-                            Icons.more_vert,
-                            color: Color(0xFF718096),
-                            size: 18,
+                        const SizedBox(width: 8),
+                        Text(
+                          statusText,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
                           ),
-                          constraints: const BoxConstraints(
-                            minWidth: 36,
-                            minHeight: 36,
-                          ),
-                          padding: EdgeInsets.zero,
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildGradientBackground(GeneratedVideo video) {
+    // Different gradient colors based on video status or random
+    final gradients = [
+      [const Color(0xFF8B9467), const Color(0xFFA8B276)], // Green (like image 1)
+      [const Color(0xFFB8A878), const Color(0xFFC9B989)], // Beige (like image 2)
+      [const Color(0xFF6B8E9B), const Color(0xFF7A9DAA)], // Blue-gray
+      [const Color(0xFF9B7B6B), const Color(0xFFAA8A7A)], // Brown
+    ];
+    
+    final gradientIndex = video.id.hashCode.abs() % gradients.length;
+    final colors = gradients[gradientIndex];
+    
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: colors,
+        ),
+      ),
+      child: Stack(
+        children: [
+          // Decorative leaf pattern (optional)
+          Positioned(
+            top: -20,
+            left: -20,
+            child: Opacity(
+              opacity: 0.2,
+              child: Icon(
+                Icons.auto_stories,
+                size: 100,
+                color: Colors.white,
               ),
             ),
           ),
@@ -740,13 +686,13 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
             'Retry Video Generation',
             style: TextStyle(
               fontWeight: FontWeight.w700,
-              color: Color(0xFF1A202C),
+              color: Color(0xFF1E293B),
             ),
           ),
           content: Text(
             'Do you want to retry generating "${video.title}"?',
             style: const TextStyle(
-              color: Color(0xFF718096),
+              color: Color(0xFF64748B),
             ),
           ),
           actions: [
@@ -754,7 +700,7 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
               onPressed: () => Navigator.of(context).pop(),
               child: const Text(
                 'Cancel',
-                style: TextStyle(color: Color(0xFF718096)),
+                style: TextStyle(color: Color(0xFF64748B)),
               ),
             ),
             ElevatedButton(
@@ -763,7 +709,7 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
                 _showSnackBar('Retry functionality not available. Please create a new video from Processing tab.', isError: true);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF667EEA),
+                backgroundColor: const Color(0xFF2563EB),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -811,12 +757,12 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF1A202C),
+                        color: Color(0xFF1E293B),
                       ),
                     ),
                     const SizedBox(height: 20),
                     ListTile(
-                      leading: const Icon(Icons.info_outline, color: Color(0xFF667EEA)),
+                      leading: const Icon(Icons.info_outline, color: Color(0xFF2563EB)),
                       title: const Text('Video Details'),
                       onTap: () {
                         Navigator.pop(context);
@@ -824,7 +770,7 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
                       },
                     ),
                     ListTile(
-                      leading: const Icon(Icons.refresh, color: Color(0xFF48BB78)),
+                      leading: const Icon(Icons.refresh, color: Color(0xFF10B981)),
                       title: const Text('Refresh Status'),
                       onTap: () {
                         Navigator.pop(context);
@@ -832,7 +778,7 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
                       },
                     ),
                     ListTile(
-                      leading: const Icon(Icons.delete_outline, color: Color(0xFFE53E3E)),
+                      leading: const Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
                       title: const Text('Delete Video'),
                       onTap: () {
                         Navigator.pop(context);
@@ -863,7 +809,7 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
             'Video Details',
             style: TextStyle(
               fontWeight: FontWeight.w700,
-              color: Color(0xFF1A202C),
+              color: Color(0xFF1E293B),
             ),
           ),
           content: Column(
@@ -885,7 +831,7 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
               onPressed: () => Navigator.of(context).pop(),
               child: const Text(
                 'Close',
-                style: TextStyle(color: Color(0xFF667EEA)),
+                style: TextStyle(color: Color(0xFF2563EB)),
               ),
             ),
           ],
@@ -906,7 +852,7 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
               '$label:',
               style: const TextStyle(
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF718096),
+                color: Color(0xFF64748B),
               ),
             ),
           ),
@@ -914,7 +860,7 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
             child: Text(
               value,
               style: const TextStyle(
-                color: Color(0xFF1A202C),
+                color: Color(0xFF1E293B),
               ),
             ),
           ),
@@ -1037,6 +983,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     try {
       _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl));
       
+      // Add error listener to detect 403 errors
+      _controller.addListener(() {
+        if (_controller.value.hasError) {
+          final error = _controller.value.errorDescription;
+          print('❌ VideoPlayer error: $error');
+          
+          // Check for 403 errors (URL expired)
+          if (error != null && (error.contains('403') || error.contains('Forbidden'))) {
+            print('🔄 Detected 403 error, returning to try fresh URL...');
+            Navigator.of(context).pop(false); // Return false to trigger fresh URL
+            return;
+          }
+        }
+      });
+      
       await _controller.initialize();
       
       _chewieController = ChewieController(
@@ -1047,20 +1008,33 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         allowMuting: true,
         showControls: true,
         materialProgressColors: ChewieProgressColors(
-          playedColor: const Color(0xFF667EEA),
-          handleColor: const Color(0xFF667EEA),
+          playedColor: const Color(0xFF2563EB),
+          handleColor: const Color(0xFF2563EB),
           backgroundColor: Colors.grey,
-          bufferedColor: const Color(0xFF667EEA).withOpacity(0.5),
+          bufferedColor: const Color(0xFF2563EB).withOpacity(0.5),
         ),
         placeholder: Container(
           color: Colors.black,
           child: const Center(
             child: CircularProgressIndicator(
-              color: Color(0xFF667EEA),
+              color: Color(0xFF2563EB),
             ),
           ),
         ),
         errorBuilder: (context, errorMessage) {
+          print('❌ Chewie error: $errorMessage');
+          
+          // Check for 403 errors in Chewie error message
+          if (errorMessage.contains('403') || errorMessage.toLowerCase().contains('forbidden')) {
+            print('🔄 Detected 403 in Chewie error, returning to try fresh URL...');
+            // Use a delayed pop to avoid conflicts with Chewie
+            Future.delayed(Duration(milliseconds: 100), () {
+              if (mounted) {
+                Navigator.of(context).pop(false);
+              }
+            });
+          }
+          
           return Container(
             color: Colors.black,
             child: Center(
@@ -1083,6 +1057,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14),
                     textAlign: TextAlign.center,
                   ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                    ),
+                    child: const Text(
+                      'Try Fresh URL',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1094,6 +1079,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _isLoading = false;
       });
     } catch (e) {
+      print('❌ VideoPlayer initialization error: $e');
+      
+      // Check for network/HTTP errors during initialization
+      if (e.toString().contains('403') || e.toString().toLowerCase().contains('forbidden')) {
+        print('🔄 Detected 403 during initialization, returning to try fresh URL...');
+        Navigator.of(context).pop(false);
+        return;
+      }
+      
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -1123,7 +1117,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const CircularProgressIndicator(
-                    color: Color(0xFF667EEA),
+                    color: Color(0xFF2563EB),
                   ),
                   const SizedBox(height: 16),
                   const Text(
@@ -1156,21 +1150,37 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            _error = null;
-                            _isLoading = true;
-                          });
-                          _initializePlayer();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF667EEA),
-                        ),
-                        child: const Text(
-                          'Retry',
-                          style: TextStyle(color: Colors.white),
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _error = null;
+                                _isLoading = true;
+                              });
+                              _initializePlayer();
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2563EB),
+                            ),
+                            child: const Text(
+                              'Retry',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          ElevatedButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFF59E0B),
+                            ),
+                            child: const Text(
+                              'Try Fresh URL',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   )

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'video_service.dart';
 
 class VideoManager extends ChangeNotifier {
@@ -11,8 +12,89 @@ class VideoManager extends ChangeNotifier {
 
   final List<GeneratedVideo> _videos = [];
   final Map<String, Timer> _statusTimers = {};
+  bool _isLoaded = false; // Track if we've loaded from backend
   
   List<GeneratedVideo> get videos => List.unmodifiable(_videos);
+
+  /// ✅ NEW: Load user's existing videos from backend
+  Future<void> loadUserVideos(String jwtToken) async {
+    if (_isLoaded) return; // Prevent multiple loads
+    
+    try {
+      print('📚 Loading user videos from backend...');
+      
+      const String baseUrl = 'https://ch2vi-production.up.railway.app';
+      final response = await http.get(
+        Uri.parse('$baseUrl/videos'),
+        headers: {
+          'authorization': 'Bearer $jwtToken',
+          'accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        List<dynamic> videosData;
+        
+        // Handle different response formats
+        if (data is List) {
+          videosData = data;
+        } else if (data is Map && data.containsKey('videos')) {
+          videosData = data['videos'] as List<dynamic>;
+        } else {
+          print('⚠️ Unexpected response format: $data');
+          return;
+        }
+        
+        print('✅ Loaded ${videosData.length} videos from backend');
+        
+        // Convert backend videos to GeneratedVideo objects
+        _videos.clear();
+        for (var videoData in videosData) {
+          final video = GeneratedVideo.fromBackendData(videoData);
+          _videos.add(video);
+          
+          // Start polling for any processing videos
+          if (video.status == 'processing') {
+            print('🔄 Resuming polling for processing video: ${video.id}');
+            _startStatusPolling(video.id);
+          }
+        }
+        
+        _isLoaded = true;
+        notifyListeners();
+        print('✅ Successfully loaded ${_videos.length} videos');
+        
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please log in again.');
+      } else {
+        print('⚠️ Failed to load videos: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      print('❌ Error loading user videos: $e');
+      // Don't throw error - app should still work even if videos can't be loaded
+    }
+  }
+
+  /// ✅ NEW: Refresh videos from backend (for pull-to-refresh)
+  Future<void> refreshFromBackend(String jwtToken) async {
+    _isLoaded = false; // Allow reload
+    await loadUserVideos(jwtToken);
+  }
+
+  /// ✅ NEW: Mark video as saved to backend
+  void markVideoAsSaved(String jobId, String backendVideoId) {
+    final index = _videos.indexWhere((video) => video.id == jobId);
+    if (index != -1) {
+      _videos[index] = _videos[index].copyWith(
+        backendVideoId: backendVideoId,
+        isSavedToBackend: true,
+      );
+      notifyListeners();
+      print('✅ Video $jobId marked as saved with backend ID: $backendVideoId');
+    }
+  }
   
   /// Start video generation from chapter with JWT authentication
   Future<String> generateVideoFromChapter({
@@ -46,7 +128,7 @@ class VideoManager extends ChangeNotifier {
       }
 
       // Create video entry
-      final video = GeneratedVideo.fromVideoStatus(status, chapterTitle);
+      final video = GeneratedVideo.fromVideoStatus(status, chapterTitle, originalText: chapterText);
       _videos.insert(0, video); // Add to beginning of list
       notifyListeners();
 
@@ -204,23 +286,19 @@ class VideoManager extends ChangeNotifier {
     if (video != null) {
       print('🔄 Retrying video generation: ${video.title}');
       
-      // Remove the failed video
-      removeVideo(jobId);
-      
-      // Note: We can't retry without the original text
-      // This is a limitation - would need to store original text
-      throw Exception('Cannot retry: Original text not available. Please create a new video from the Processing tab.');
-      
-      // If you want to enable retry, you need to:
-      // 1. Store the original chapterText in GeneratedVideo
-      // 2. Then uncomment this:
-      /*
-      await generateVideoFromChapter(
-        chapterText: video.originalText,  // Need to add this field
-        chapterTitle: video.title,
-        jwtToken: jwtToken,
-      );
-      */
+      if (video.originalText != null && video.originalText!.isNotEmpty) {
+        // Remove the failed video
+        removeVideo(jobId);
+        
+        // Retry with the original text
+        await generateVideoFromChapter(
+          chapterText: video.originalText!,
+          chapterTitle: video.title,
+          jwtToken: jwtToken,
+        );
+      } else {
+        throw Exception('Cannot retry: Original text not available. Please create a new video from the Processing tab.');
+      }
     } else {
       throw Exception('Video not found');
     }
@@ -267,7 +345,45 @@ class VideoManager extends ChangeNotifier {
     try {
       print('🔄 Getting fresh playback URL from server for job: $jobId');
       
-      // Get fresh status which includes fresh presigned URL
+      // Get video by jobId to find the backend video ID
+      final video = getVideo(jobId);
+      if (video?.backendVideoId != null) {
+        // Use backend API to get fresh playback URL
+        final prefs = await SharedPreferences.getInstance();
+        final jwtToken = prefs.getString('access_token');
+        
+        if (jwtToken != null) {
+          const String baseUrl = 'https://ch2vi-production.up.railway.app';
+          final response = await http.get(
+            Uri.parse('$baseUrl/play/${video!.backendVideoId}'),
+            headers: {
+              'authorization': 'Bearer $jwtToken',
+              'accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+          ).timeout(Duration(seconds: 10));
+          
+          if (response.statusCode == 200) {
+            final data = json.decode(response.body);
+            final freshUrl = data['video_url'];
+            
+            if (freshUrl != null) {
+              print('✅ Fresh playback URL received: ${freshUrl.substring(0, 100)}...');
+              
+              // Update the stored URL
+              final index = _videos.indexWhere((v) => v.id == jobId);
+              if (index != -1) {
+                _videos[index] = _videos[index].copyWith(playbackUrl: freshUrl);
+                notifyListeners();
+              }
+              
+              return freshUrl;
+            }
+          }
+        }
+      }
+      
+      // Fallback to old method
       final status = await VideoGenerationService.getJobStatus(jobId);
       
       if (status.playbackUrl != null) {

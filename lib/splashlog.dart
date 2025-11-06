@@ -394,7 +394,22 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
-  void _navigateToMainScreen() {
+  void _navigateToMainScreen() async {
+    // ✅ CRITICAL: Load user videos before navigating to main screen
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jwtToken = prefs.getString('access_token');
+      
+      if (jwtToken != null && jwtToken.isNotEmpty) {
+        print('🚀 Loading user data before entering main screen...');
+        await initializeUserData(jwtToken);
+        print('✅ User data loaded successfully');
+      }
+    } catch (e) {
+      print('⚠️ Error loading user data: $e');
+      // Continue to main screen even if loading fails
+    }
+    
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => const MainScreen(),

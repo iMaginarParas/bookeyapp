@@ -72,7 +72,7 @@ class NetworkDebugUtil {
     Map<String, dynamic> results = {};
 
     List<String> hostnames = [
-      'chap2vid-production.up.railway.app',
+      'ch2vi-production.up.railway.app',
       'railway.app',
       'bookey-pdf-production.up.railway.app',
     ];
