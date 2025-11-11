@@ -12,6 +12,7 @@ class VideoRequest {
   final bool animateAll;
   final bool mergeFinal;
   final String jwtToken; // ← ADDED
+  final String language; // ✅ ADD language parameter
 
   VideoRequest({
     required this.text,
@@ -19,6 +20,7 @@ class VideoRequest {
     this.animateAll = true,
     this.mergeFinal = true,
     required this.jwtToken, // ← ADDED
+    this.language = 'English', // ✅ ADD language with default
   });
 
   Map<String, dynamic> toJson() {
@@ -28,6 +30,7 @@ class VideoRequest {
       'animate_all': animateAll,
       'merge_final': mergeFinal,
       'jwt_token': jwtToken, // ← ADDED
+      'language': language, // ✅ ADD language to JSON
     };
   }
 }
@@ -485,6 +488,7 @@ class VideoGenerationService {
     required String jwtToken, // ← ADDED
     bool animateAll = true,
     bool mergeFinal = true,
+    String language = 'English', // ✅ ADD language parameter
   }) async {
     final client = _createHttpClient();
 
@@ -495,6 +499,7 @@ class VideoGenerationService {
         animateAll: animateAll,
         mergeFinal: mergeFinal,
         jwtToken: jwtToken, // ← ADDED
+        language: language, // ✅ PASS language parameter
       );
 
       print('📤 Sending request to: $baseUrl/convert-story');
@@ -903,7 +908,7 @@ class VideoGenerationService {
       final response = await client.get(
         uri,
         headers: _getAuthHeaders(token),
-      ).timeout(Duration(seconds: 30));
+      ).timeout(Duration(seconds: 300));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);

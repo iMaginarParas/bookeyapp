@@ -204,6 +204,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       navigateToHome: () => _navigateToTab(0),
       navigateToProfile: () => _navigateToTab(3),
     );
+    
+    // Initialize video notification service after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      VideoNotificationService().initialize(context);
+      // Request notification permission for system notifications
+      SystemNotificationHelper.requestNotificationPermission();
+    });
   }
 
   @override

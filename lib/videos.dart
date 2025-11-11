@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:ui';
 import 'video_manager.dart';
 import 'video_service.dart';
 import 'dart:async';
@@ -18,6 +19,8 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
   final VideoManager _videoManager = VideoManager();
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
+  bool _isInitializing = true;  // ✅ ADD: Track initialization state
+  String? _loadError;           // ✅ ADD: Track load errors
 
   @override
   void initState() {
@@ -37,8 +40,75 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
     // Listen to video manager updates
     _videoManager.addListener(_onVideoManagerUpdate);
     
-    // Debug: Print video information on startup
-    _debugPrintVideoInfo();
+    // ✅ FIX: Load video history from backend on initialization
+    _loadVideoHistory();
+  }
+
+  // ✅ ADD: Method to load video history from backend
+  Future<void> _loadVideoHistory() async {
+    try {
+      setState(() {
+        _isInitializing = true;
+        _loadError = null;
+      });
+
+      print('📚 VideosPage: Loading video history from backend...');
+      
+      // Get JWT token from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final jwtToken = prefs.getString('access_token');
+      
+      if (jwtToken == null) {
+        setState(() {
+          _loadError = 'No authentication token found. Please log in again.';
+          _isInitializing = false;
+        });
+        print('❌ No JWT token found');
+        return;
+      }
+
+      // Load videos from backend
+      await _videoManager.loadUserVideos(jwtToken);
+      
+      print('✅ VideosPage: Successfully loaded ${_videoManager.videos.length} videos');
+      
+      // Debug: Print video information after loading
+      _debugPrintVideoInfo();
+      
+    } catch (e) {
+      print('❌ Error loading video history: $e');
+      setState(() {
+        _loadError = 'Failed to load videos: ${e.toString()}';
+      });
+    } finally {
+      setState(() {
+        _isInitializing = false;
+      });
+    }
+  }
+
+  // ✅ ADD: Method to refresh video history (for pull-to-refresh)
+  Future<void> _refreshVideoHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jwtToken = prefs.getString('access_token');
+      
+      if (jwtToken != null) {
+        await _videoManager.refreshFromBackend(jwtToken);
+        _debugPrintVideoInfo();
+      }
+    } catch (e) {
+      print('❌ Error refreshing video history: $e');
+      // Show snackbar or other error UI
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to refresh videos: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _debugPrintVideoInfo() {
@@ -71,19 +141,27 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final crossAxisCount = screenWidth > 600 ? 3 : (screenWidth > 400 ? 2 : 1);
+    
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8FAFC),
       body: FadeTransition(
         opacity: _fadeAnimation,
-        child: CustomScrollView(
+        child: RefreshIndicator(  // ✅ ADD: Pull-to-refresh support
+          onRefresh: _refreshVideoHistory,
+          color: const Color(0xFF2563EB),
+          child: CustomScrollView(
           slivers: [
-            // Custom app bar
+            // Enhanced app bar with compact design
             SliverAppBar(
-              expandedHeight: 120,
+              expandedHeight: 100,
               floating: false,
               pinned: true,
               backgroundColor: Colors.white,
               elevation: 0,
+              shadowColor: Colors.transparent,
+              surfaceTintColor: Colors.transparent,
               flexibleSpace: FlexibleSpaceBar(
                 background: Container(
                   decoration: BoxDecoration(
@@ -91,16 +169,25 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        const Color(0xFF2563EB).withOpacity(0.05),
+                        const Color(0xFF2563EB).withOpacity(0.06),
                         const Color(0xFF3B82F6).withOpacity(0.03),
+                        Colors.white.withOpacity(0.9),
                       ],
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF2563EB).withOpacity(0.08),
+                        blurRadius: 15,
+                        spreadRadius: 0,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
                   ),
                   padding: const EdgeInsets.only(
                     left: 20,
                     right: 20,
                     top: 50,
-                    bottom: 16,
+                    bottom: 12,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -108,33 +195,85 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
                     children: [
                       Row(
                         children: [
-                          const Icon(
-                            Icons.play_circle,
-                            color: Color(0xFF2563EB),
-                            size: 28,
-                          ),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'LIBRARY',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF1E293B),
-                              letterSpacing: 2,
-                            ),
-                          ),
-                          const Spacer(),
-                          // Star icon
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFBBF24),
-                              borderRadius: BorderRadius.circular(8),
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF2563EB).withOpacity(0.25),
+                                  blurRadius: 8,
+                                  spreadRadius: 0,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
                             child: const Icon(
-                              Icons.star,
+                              Icons.video_library,
                               color: Colors.white,
-                              size: 20,
+                              size: 18,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'VIDEOS',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF1E293B),
+                                    letterSpacing: -0.3,
+                                  ),
+                                ),
+                                Text(
+                                  '${_videoManager.videos.length} ${_videoManager.videos.length == 1 ? 'Video' : 'Videos'}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: const Color(0xFF64748B),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // ✅ ADD: Refresh button in app bar
+                          IconButton(
+                            onPressed: _isInitializing ? null : _refreshVideoHistory,
+                            icon: Icon(
+                              Icons.refresh,
+                              color: _isInitializing 
+                                  ? Colors.grey 
+                                  : const Color(0xFF2563EB),
+                            ),
+                            tooltip: 'Refresh videos',
+                          ),
+                          // Compact star icon
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFFFBBF24), Color(0xFFF59E0B)],
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFFBBF24).withOpacity(0.25),
+                                  blurRadius: 6,
+                                  spreadRadius: 0,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.star_rounded,
+                              color: Colors.white,
+                              size: 16,
                             ),
                           ),
                         ],
@@ -145,19 +284,97 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
               ),
             ),
             
-            // Video grid or empty state
+            // ✅ IMPROVED: Content with loading and error states
+            if (_isInitializing)
+              SliverFillRemaining(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(
+                        color: Color(0xFF2563EB),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Loading your videos...',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (_loadError != null)
+              SliverFillRemaining(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: 64,
+                        color: Colors.red[300],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Error loading videos',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[800],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _loadError!,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: _loadVideoHistory,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2563EB),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Retry',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              // ✅ EXISTING: Keep all original video grid and empty state logic
+            // Video grid or empty state with improved responsiveness
             _videoManager.videos.isEmpty
                 ? SliverFillRemaining(
                     child: _buildEmptyState(),
                   )
                 : SliverPadding(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                     sliver: SliverGrid(
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossAxisCount,
                         childAspectRatio: 0.75,
                         mainAxisSpacing: 16,
-                        crossAxisSpacing: 16,
+                        crossAxisSpacing: 12,
                       ),
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
@@ -171,123 +388,131 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
           ],
         ),
       ),
+    ),
     );
   }
 
   Widget _buildEmptyState() {
     return Center(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 32),
-        padding: const EdgeInsets.all(40),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: const Color(0xFF2563EB).withOpacity(0.1),
-            width: 1,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: 320,
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF2563EB).withOpacity(0.05),
-              blurRadius: 30,
-              offset: const Offset(0, 10),
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: const Color(0xFF2563EB).withOpacity(0.1),
+              width: 1,
             ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFF2563EB).withOpacity(0.1),
-                    const Color(0xFF3B82F6).withOpacity(0.05),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF2563EB).withOpacity(0.05),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF2563EB).withOpacity(0.1),
+                      const Color(0xFF3B82F6).withOpacity(0.05),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: const Icon(
+                  Icons.video_library_outlined,
+                  size: 36,
+                  color: Color(0xFF2563EB),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'No Videos Yet',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1E293B),
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Create your first video from the Create tab',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.w400,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFFE2E8F0),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.lightbulb_outline,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'How to Create Videos',
+                      style: TextStyle(
+                        color: Color(0xFF1E293B),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '1. Upload content in Create tab\n2. Process in Processing tab\n3. Click "Create Video"\n4. Videos appear here!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
                   ],
                 ),
-                borderRadius: BorderRadius.circular(30),
               ),
-              child: const Icon(
-                Icons.video_library_outlined,
-                size: 48,
-                color: Color(0xFF2563EB),
-              ),
-            ),
-            const SizedBox(height: 32),
-            const Text(
-              'No Videos Yet',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1E293B),
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Create your first video from the Create tab',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                color: Color(0xFF64748B),
-                fontWeight: FontWeight.w400,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 32),
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: const Color(0xFFE2E8F0),
-                ),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.lightbulb_outline,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'How to Create Videos',
-                    style: TextStyle(
-                      color: Color(0xFF1E293B),
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    '1. Upload content in the Create tab\n2. Process chapters in Processing tab\n3. Click "Create Video" on any chapter\n4. Your videos will appear here!',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFF64748B),
-                      fontSize: 15,
-                      height: 1.6,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -476,27 +701,6 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
                 ),
               ),
               
-              // Play button overlay for completed videos
-              if (video.status == 'completed')
-                Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white,
-                        width: 3,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.play_arrow,
-                      size: 40,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              
               // Status indicator (processing/failed)
               if (video.status != 'completed')
                 Center(
@@ -572,6 +776,367 @@ class _VideosPageState extends State<VideosPage> with TickerProviderStateMixin {
               child: Icon(
                 Icons.auto_stories,
                 size: 100,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // New enhanced video card with better animations and hover effects
+  Widget _buildEnhancedVideoCard(GeneratedVideo video, int index) {
+    Color statusColor;
+    IconData statusIcon;
+    String statusText;
+
+    switch (video.status) {
+      case 'completed':
+        statusColor = const Color(0xFF10B981);
+        statusIcon = Icons.check_circle;
+        statusText = 'Ready';
+        break;
+      case 'failed':
+        statusColor = const Color(0xFFEF4444);
+        statusIcon = Icons.error_outline;
+        statusText = 'Failed';
+        break;
+      case 'processing':
+      default:
+        statusColor = const Color(0xFFF59E0B);
+        statusIcon = Icons.sync;
+        statusText = 'Processing';
+        break;
+    }
+    
+    return TweenAnimationBuilder<double>(
+      duration: Duration(milliseconds: 600 + (index * 100)),
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      builder: (context, value, child) {
+        return Transform.translate(
+          offset: Offset(0, 30 * (1 - value)),
+          child: Opacity(
+            opacity: value,
+            child: child,
+          ),
+        );
+      },
+      child: GestureDetector(
+        onTap: () {
+          if (video.status == 'completed') {
+            _playVideo(video);
+          }
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: statusColor.withOpacity(0.2),
+              width: 2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: statusColor.withOpacity(0.1),
+                blurRadius: 20,
+                spreadRadius: 0,
+                offset: const Offset(0, 8),
+              ),
+              BoxShadow(
+                color: Colors.white.withOpacity(0.9),
+                blurRadius: 10,
+                spreadRadius: -5,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: Stack(
+              children: [
+                // Enhanced background with thumbnail or gradient
+                Positioned.fill(
+                  child: video.status == 'completed' && 
+                         video.thumbnailUrl != null && 
+                         video.thumbnailUrl!.isNotEmpty
+                      ? Image.network(
+                          video.thumbnailUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return _buildEnhancedGradientBackground(video);
+                          },
+                        )
+                      : _buildEnhancedGradientBackground(video),
+                ),
+                
+                // Enhanced overlay with better gradient
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.black.withOpacity(0.1),
+                          Colors.black.withOpacity(0.3),
+                          Colors.black.withOpacity(0.7),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                
+                // Enhanced menu button with better styling
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: GestureDetector(
+                    onTap: () => _showVideoOptions(video),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.1),
+                          width: 1,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.more_vert_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ),
+                
+                // Enhanced content layout
+                Positioned(
+                  left: 18,
+                  right: 18,
+                  bottom: 18,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Enhanced title with better typography
+                      Text(
+                        video.title.isNotEmpty ? video.title : 'Untitled Video',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                          height: 1.2,
+                          letterSpacing: -0.3,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black54,
+                              offset: Offset(0, 2),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      
+                      const SizedBox(height: 12),
+                      
+                      // Enhanced metadata row
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFFFBBF24), Color(0xFFF59E0B)],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFFBBF24).withOpacity(0.4),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              _formatCreatedAt(video.createdAt),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ),
+                          const Spacer(),
+                          if (video.duration != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.2),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                video.formattedDuration,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            )
+                          else if (video.totalScenes != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.2),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                '${video.totalScenes} scenes',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // Enhanced status indicator for non-completed videos
+                if (video.status != 'completed')
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: statusColor,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: statusColor.withOpacity(0.5),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            statusIcon,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            statusText,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                // Processing shimmer effect
+                if (video.status == 'processing')
+                  Positioned.fill(
+                    child: TweenAnimationBuilder<double>(
+                      duration: const Duration(seconds: 2),
+                      tween: Tween<double>(begin: -1.0, end: 1.0),
+                      onEnd: () {
+                        // Loop the animation
+                      },
+                      builder: (context, value, child) {
+                        return Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment(-1.0 + value, 0.0),
+                              end: Alignment(1.0 + value, 0.0),
+                              colors: [
+                                Colors.transparent,
+                                Colors.white.withOpacity(0.2),
+                                Colors.transparent,
+                              ],
+                              stops: const [0.0, 0.5, 1.0],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildEnhancedGradientBackground(GeneratedVideo video) {
+    // Enhanced gradient colors with better contrast
+    final gradients = [
+      [const Color(0xFF667eea), const Color(0xFF764ba2)], // Purple-blue
+      [const Color(0xFF11998e), const Color(0xFF38ef7d)], // Green
+      [const Color(0xFFee9ca7), const Color(0xFFffdde1)], // Pink
+      [const Color(0xFF4facfe), const Color(0xFF00f2fe)], // Blue
+      [const Color(0xFFf093fb), const Color(0xFFf5576c)], // Pink-red
+      [const Color(0xFF4facfe), const Color(0xFF00f2fe)], // Cyan-blue
+    ];
+    
+    final gradientIndex = video.id.hashCode.abs() % gradients.length;
+    final colors = gradients[gradientIndex];
+    
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: colors,
+        ),
+      ),
+      child: Stack(
+        children: [
+          // Enhanced decorative pattern
+          Positioned(
+            top: -30,
+            left: -30,
+            child: Opacity(
+              opacity: 0.15,
+              child: Icon(
+                Icons.video_library_rounded,
+                size: 120,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -20,
+            right: -20,
+            child: Opacity(
+              opacity: 0.1,
+              child: Icon(
+                Icons.play_circle_outline_rounded,
+                size: 80,
                 color: Colors.white,
               ),
             ),
@@ -1098,98 +1663,382 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF0F0F0F),
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: Text(
-          widget.title,
-          style: const TextStyle(color: Colors.white),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+        leading: Container(
+          margin: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.7),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.1),
+              width: 1,
+            ),
+          ),
+          child: IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
+          ),
         ),
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+        title: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.7),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.1),
+              width: 1,
+            ),
+          ),
+          child: Text(
+            widget.title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.2,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
+        actions: [
+          Container(
+            margin: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.7),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.1),
+                width: 1,
+              ),
+            ),
+            child: IconButton(
+              onPressed: () {
+                // Add share functionality here if needed
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Video options coming soon'),
+                    backgroundColor: const Color(0xFF2563EB),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+              icon: const Icon(
+                Icons.more_vert_rounded,
+                color: Colors.white,
+                size: 22,
+              ),
+            ),
+          ),
+        ],
       ),
-      body: Center(
-        child: _isLoading
-            ? Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(
-                    color: Color(0xFF2563EB),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Loading video...',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ],
-              )
-            : _error != null
-                ? Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        color: Colors.red,
-                        size: 48,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Error Loading Video',
-                        style: TextStyle(color: Colors.white, fontSize: 18),
-                      ),
-                      const SizedBox(height: 8),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
-                        child: Text(
-                          _error!,
-                          style: TextStyle(color: Colors.white.withOpacity(0.7)),
-                          textAlign: TextAlign.center,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFF0F0F0F),
+              const Color(0xFF1A1A1A),
+              const Color(0xFF0F0F0F),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Center(
+              child: _isLoading
+                  ? Container(
+                      padding: const EdgeInsets.all(40),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: const Color(0xFF2563EB).withOpacity(0.3),
+                          width: 1,
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF2563EB).withOpacity(0.2),
+                            blurRadius: 30,
+                            spreadRadius: 0,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 24),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          ElevatedButton(
-                            onPressed: () {
-                              setState(() {
-                                _error = null;
-                                _isLoading = true;
-                              });
-                              _initializePlayer();
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF2563EB),
+                          Container(
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
+                              ),
+                              borderRadius: BorderRadius.circular(30),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF2563EB).withOpacity(0.5),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 5),
+                                ),
+                              ],
                             ),
-                            child: const Text(
-                              'Retry',
-                              style: TextStyle(color: Colors.white),
+                            child: const CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 3,
                             ),
                           ),
-                          const SizedBox(width: 16),
-                          ElevatedButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFF59E0B),
+                          const SizedBox(height: 24),
+                          const Text(
+                            'Loading Video...',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: -0.3,
                             ),
-                            child: const Text(
-                              'Try Fresh URL',
-                              style: TextStyle(color: Colors.white),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Preparing your content',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.7),
+                              fontSize: 14,
                             ),
                           ),
                         ],
                       ),
-                    ],
-                  )
-                : _chewieController != null
-                    ? Chewie(controller: _chewieController!)
-                    : const Text(
-                        'Video player not initialized',
-                        style: TextStyle(color: Colors.white),
-                      ),
+                    )
+                  : _error != null
+                      ? Container(
+                          padding: const EdgeInsets.all(32),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: Colors.red.withOpacity(0.3),
+                              width: 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.red.withOpacity(0.2),
+                                blurRadius: 30,
+                                spreadRadius: 0,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 80,
+                                height: 80,
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(40),
+                                  border: Border.all(
+                                    color: Colors.red.withOpacity(0.3),
+                                    width: 2,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.error_outline_rounded,
+                                  color: Colors.red,
+                                  size: 40,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              const Text(
+                                'Error Loading Video',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Container(
+                                constraints: const BoxConstraints(maxWidth: 300),
+                                child: Text(
+                                  _error!,
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.8),
+                                    fontSize: 14,
+                                    height: 1.5,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              const SizedBox(height: 32),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
+                                      ),
+                                      borderRadius: BorderRadius.circular(14),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(0xFF2563EB).withOpacity(0.4),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        setState(() {
+                                          _error = null;
+                                          _isLoading = true;
+                                        });
+                                        _initializePlayer();
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        shadowColor: Colors.transparent,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 24,
+                                          vertical: 14,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(14),
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'Retry',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [Color(0xFFF59E0B), Color(0xFFF97316)],
+                                      ),
+                                      borderRadius: BorderRadius.circular(14),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(0xFFF59E0B).withOpacity(0.4),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: ElevatedButton(
+                                      onPressed: () => Navigator.of(context).pop(false),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        shadowColor: Colors.transparent,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 20,
+                                          vertical: 14,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(14),
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'Refresh URL',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        )
+                      : _chewieController != null
+                          ? Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(
+                                  color: const Color(0xFF2563EB).withOpacity(0.3),
+                                  width: 2,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF2563EB).withOpacity(0.2),
+                                    blurRadius: 40,
+                                    spreadRadius: 0,
+                                    offset: const Offset(0, 15),
+                                  ),
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 20,
+                                    spreadRadius: 0,
+                                    offset: const Offset(0, 5),
+                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(22),
+                                child: AspectRatio(
+                                  aspectRatio: _controller.value.aspectRatio,
+                                  child: Chewie(controller: _chewieController!),
+                                ),
+                              ),
+                            )
+                          : Container(
+                              padding: const EdgeInsets.all(40),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.8),
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.1),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.video_settings_rounded,
+                                    color: Colors.white.withOpacity(0.5),
+                                    size: 60,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'Video player not initialized',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.7),
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+            ),
+          ),
+        ),
       ),
     );
   }

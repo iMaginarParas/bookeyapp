@@ -27,10 +27,38 @@ class _CompactStoryGeneratorWidgetState extends State<CompactStoryGeneratorWidge
     with TickerProviderStateMixin {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _subjectController = TextEditingController();
+  
+  // ✅ NEW: Character and context controllers
+  final TextEditingController _contextController = TextEditingController();
+  final TextEditingController _charNameController = TextEditingController();
+  final TextEditingController _charAgeController = TextEditingController();
 
   String _selectedGenre = 'Fantasy';
   String _selectedDuration = 'Medium (10-20 minutes read)';
   bool _isGenerating = false;
+  
+  // ✅ NEW: Character management
+  String _selectedCharType = 'Human';
+  List<Map<String, String>> _characters = [];
+  
+  // ✅ NEW: Character types
+  List<String> _characterTypes = [
+    'Human',
+    'Animal (Dog)',
+    'Animal (Cat)', 
+    'Animal (Bird)',
+    'Animal (Other)',
+    'Robot/AI',
+    'Alien',
+    'Magical Creature',
+    'Ghost/Spirit',
+    'Object (Chair)',
+    'Object (Watch)',
+    'Object (Vehicle)',
+    'Object (Other)',
+    'Mythical Being',
+    'Other'
+  ];
 
   List<Map<String, String>> _genres = [
     {'value': 'Fantasy', 'label': 'Fantasy'},
@@ -57,6 +85,9 @@ class _CompactStoryGeneratorWidgetState extends State<CompactStoryGeneratorWidge
   void dispose() {
     _titleController.dispose();
     _subjectController.dispose();
+    _contextController.dispose();
+    _charNameController.dispose();
+    _charAgeController.dispose();
     super.dispose();
   }
 
@@ -80,6 +111,47 @@ class _CompactStoryGeneratorWidgetState extends State<CompactStoryGeneratorWidge
     }
   }
 
+  // ✅ NEW: Add character function
+  void _addCharacter() {
+    if (_charNameController.text.trim().isEmpty || _charAgeController.text.trim().isEmpty) {
+      _showSnackBar('Please fill in character name and age', isError: true);
+      return;
+    }
+
+    if (!kIsWeb) {
+      HapticFeedback.lightImpact();
+    }
+
+    setState(() {
+      _characters.add({
+        'name': _charNameController.text.trim(),
+        'age': _charAgeController.text.trim(),
+        'type': _selectedCharType,
+      });
+      _charNameController.clear();
+      _charAgeController.clear();
+      _selectedCharType = 'Human';
+    });
+
+    _showSnackBar('Character added!', isError: false);
+  }
+
+  // ✅ NEW: Remove character function
+  void _removeCharacter(int index) {
+    if (!kIsWeb) {
+      HapticFeedback.lightImpact();
+    }
+    setState(() {
+      _characters.removeAt(index);
+    });
+  }
+
+  // ✅ NEW: Format characters for API
+  String _formatCharactersForApi() {
+    if (_characters.isEmpty) return '';
+    return _characters.map((char) => '${char['name']} — ${char['age']} years old, ${char['type']}').join('\n');
+  }
+
   Future<void> _generateStory() async {
     if (!_canGenerateStory()) {
       _showSnackBar('Please fill in title and subject', isError: true);
@@ -98,8 +170,8 @@ class _CompactStoryGeneratorWidgetState extends State<CompactStoryGeneratorWidge
       final storyRequest = StoryRequest(
         title: _titleController.text.trim(),
         subject: _subjectController.text.trim(),
-        characters: null,
-        context: null,
+        characters: _formatCharactersForApi(), // ✅ NEW: Send formatted characters
+        context: _contextController.text.trim().isNotEmpty ? _contextController.text.trim() : null, // ✅ NEW: Send context
         duration: _selectedDuration,
         genre: _selectedGenre,
       );
@@ -135,6 +207,13 @@ class _CompactStoryGeneratorWidgetState extends State<CompactStoryGeneratorWidge
   void _clearForm() {
     _titleController.clear();
     _subjectController.clear();
+    _contextController.clear();
+    _charNameController.clear();
+    _charAgeController.clear();
+    setState(() {
+      _characters.clear();
+      _selectedCharType = 'Human';
+    });
   }
 
   bool _canGenerateStory() {
@@ -234,6 +313,16 @@ class _CompactStoryGeneratorWidgetState extends State<CompactStoryGeneratorWidge
             
             const SizedBox(height: 12),
             
+            // ✅ NEW: Character section
+            _buildCharacterSection(),
+            
+            const SizedBox(height: 12),
+            
+            // ✅ NEW: Context section
+            _buildContextSection(),
+            
+            const SizedBox(height: 12),
+            
             // Dropdowns row
             Row(
               children: [
@@ -311,6 +400,224 @@ class _CompactStoryGeneratorWidgetState extends State<CompactStoryGeneratorWidge
         ),
       ),
     ),
+    );
+  }
+
+  // ✅ NEW: Character input section
+  Widget _buildCharacterSection() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0FDF4),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: const Color(0xFF10B981).withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.people, color: Color(0xFF10B981), size: 16),
+              const SizedBox(width: 6),
+              Text(
+                'Characters (Optional)',
+                style: TextStyle(
+                  color: Color(0xFF1E293B),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          
+          // Character input form
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: _buildSmallTextField(
+                  controller: _charNameController,
+                  hint: 'Name',
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _buildSmallTextField(
+                  controller: _charAgeController,
+                  hint: 'Age',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          
+          // Character type dropdown
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFFD1D5DB)),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _selectedCharType,
+                isExpanded: true,
+                dropdownColor: Colors.white,
+                style: TextStyle(color: Color(0xFF1F2937), fontSize: 12),
+                onChanged: (String? newValue) {
+                  if (newValue != null) {
+                    setState(() {
+                      _selectedCharType = newValue;
+                    });
+                  }
+                },
+                items: _characterTypes.map<DropdownMenuItem<String>>((String value) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(value, style: TextStyle(fontSize: 12)),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 8),
+          
+          // Add button
+          SizedBox(
+            width: double.infinity,
+            height: 30,
+            child: ElevatedButton(
+              onPressed: _addCharacter,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(0xFF10B981),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                textStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+              ),
+              child: Text('Add Character'),
+            ),
+          ),
+          
+          // Character list
+          if (_characters.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ...(_characters.asMap().entries.map((entry) {
+              final index = entry.key;
+              final char = entry.value;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFF10B981).withOpacity(0.2)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.person, size: 12, color: Color(0xFF10B981)),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        '${char['name']} — ${char['age']}, ${char['type']}',
+                        style: TextStyle(fontSize: 11, color: Color(0xFF374151)),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => _removeCharacter(index),
+                      child: Icon(Icons.close, size: 14, color: Colors.red.shade400),
+                    ),
+                  ],
+                ),
+              );
+            })).toList(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ✅ NEW: Context section
+  Widget _buildContextSection() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: const Color(0xFFF59E0B).withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.location_on, color: Color(0xFFF59E0B), size: 16),
+              const SizedBox(width: 6),
+              Text(
+                'Context & Setting (Optional)',
+                style: TextStyle(
+                  color: Color(0xFF1E293B),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFFD1D5DB)),
+            ),
+            child: TextField(
+              controller: _contextController,
+              maxLines: 2,
+              style: const TextStyle(fontSize: 12, color: Color(0xFF1F2937)),
+              decoration: InputDecoration(
+                hintText: 'Describe the world, time period, or setting...',
+                hintStyle: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.all(8),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ NEW: Small text field helper
+  Widget _buildSmallTextField({
+    required TextEditingController controller,
+    required String hint,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFFD1D5DB)),
+      ),
+      child: TextField(
+        controller: controller,
+        style: const TextStyle(fontSize: 12, color: Color(0xFF1F2937)),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        ),
+      ),
     );
   }
 
@@ -1224,6 +1531,9 @@ class BackgroundJobApiService {
       final uri = Uri.parse('$baseUrl/process-audio');
       final request = http.MultipartRequest('POST', uri);
 
+      final sessionId = _generateSessionId();
+      request.fields['session_id'] = sessionId;
+
       if (kIsWeb && webFile != null) {
         request.files.add(http.MultipartFile.fromBytes('file', webFile.bytes!,
             filename: webFile.name));
@@ -1234,19 +1544,19 @@ class BackgroundJobApiService {
 
       request.headers.addAll({
         'Accept': 'application/json',
-        'User-Agent': 'Bookey-Flutter-App/1.0',
+        'User-Agent': 'Bookey-Flutter-App/2.0',
       });
 
-      final streamedResponse = await request.send().timeout(Duration(seconds: 30));
+      final streamedResponse = await request.send().timeout(Duration(seconds: 60));
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        print('🎵 Audio processing started - Job ID: ${data['job_id']}, Session: ${data['session_id']}');
+        print('🎵 Audio processing started - Job ID: ${data['job_id']}, Session: ${data['session_id'] ?? sessionId}');
         
         // Start polling for this job
         if (data['job_id'] != null) {
-          _startJobPolling(data['job_id'], data['session_id']);
+          _startJobPolling(data['job_id'], data['session_id'] ?? sessionId);
         }
         
         return data;
@@ -1287,67 +1597,81 @@ class BackgroundJobApiService {
 
   static Future<Map<String, dynamic>?> getResults(String sessionId) async {
     try {
-      // Method 1: Try the standard results endpoint
+      print('🔍 Trying to fetch results for session: $sessionId');
+      
+      // Method 1: Standard results endpoint
       var response = await http.get(
         Uri.parse('$baseUrl/results/$sessionId'),
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'Bookey-Flutter-App/1.0',
+          'User-Agent': 'Bookey-Flutter-App/2.0',
         },
-      ).timeout(Duration(seconds: 10));
+      ).timeout(Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         print('✅ Results fetched for session $sessionId via standard endpoint');
         return data;
-      } 
-      
-      // Method 2: If 404/500, try alternative paths
-      if (response.statusCode == 404 || response.statusCode == 500) {
-        print('🔄 Standard endpoint failed, trying direct R2 access patterns');
-        
-        // Try session-results endpoint (if available)
-        try {
-          response = await http.get(
-            Uri.parse('$baseUrl/session-results/$sessionId'),
-            headers: {
-              'Accept': 'application/json',
-              'User-Agent': 'Bookey-Flutter-App/1.0',
-            },
-          ).timeout(Duration(seconds: 10));
-          
-          if (response.statusCode == 200) {
-            final data = json.decode(response.body);
-            print('✅ Results fetched via session-results endpoint');
-            return data;
-          }
-        } catch (e) {
-          print('session-results endpoint not available');
-        }
-        
-        // Method 3: Try download endpoint as results source
-        try {
-          response = await http.get(
-            Uri.parse('$baseUrl/download/$sessionId'),
-            headers: {
-              'Accept': 'application/json',
-              'User-Agent': 'Bookey-Flutter-App/1.0',
-            },
-          ).timeout(Duration(seconds: 10));
-          
-          if (response.statusCode == 200) {
-            // Download endpoint might return JSON directly
-            final data = json.decode(response.body);
-            print('✅ Results fetched via download endpoint');
-            return data;
-          }
-        } catch (e) {
-          print('Download endpoint failed: $e');
-        }
       }
       
-      print('❌ All result fetching methods failed for session $sessionId: ${response.statusCode}');
-      print('Response body: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}');
+      // Method 2: Try session-results endpoint
+      try {
+        response = await http.get(
+          Uri.parse('$baseUrl/session-results/$sessionId'),
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'Bookey-Flutter-App/2.0',
+          },
+        ).timeout(Duration(seconds: 15));
+        
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          print('✅ Results fetched via session-results endpoint');
+          return data;
+        }
+      } catch (e) {
+        print('❌ session-results endpoint failed: $e');
+      }
+      
+      // Method 3: Try download endpoint
+      try {
+        response = await http.get(
+          Uri.parse('$baseUrl/download/$sessionId'),
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'Bookey-Flutter-App/2.0',
+          },
+        ).timeout(Duration(seconds: 15));
+        
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          print('✅ Results fetched via download endpoint');
+          return data;
+        }
+      } catch (e) {
+        print('❌ Download endpoint failed: $e');
+      }
+      
+      // Method 4: Try session-info endpoint
+      try {
+        response = await http.get(
+          Uri.parse('$baseUrl/session-info/$sessionId'),
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'Bookey-Flutter-App/2.0',
+          },
+        ).timeout(Duration(seconds: 15));
+        
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          print('✅ Results fetched via session-info endpoint');
+          return data;
+        }
+      } catch (e) {
+        print('❌ session-info endpoint failed: $e');
+      }
+      
+      print('❌ All result fetching methods failed for session $sessionId');
       return null;
     } catch (e) {
       print('❌ Error getting results for session $sessionId: $e');
@@ -1363,12 +1687,13 @@ class BackgroundJobApiService {
     _activePollers[jobId]?.cancel();
     
     int pollCount = 0;
-    const maxPolls = 20; // Stop after 60 seconds (20 * 3)
+    const maxPolls = 30; // Increase timeout to 90 seconds (30 * 3)
     
     // Start new polling timer
     _activePollers[jobId] = Timer.periodic(Duration(seconds: 3), (timer) async {
       try {
         pollCount++;
+        print('🔍 Poll #$pollCount for job $jobId');
         final statusData = await getJobStatus(jobId);
         
         if (statusData != null) {
@@ -1376,100 +1701,55 @@ class BackgroundJobApiService {
           print('📊 Job $jobId status: $status (poll #$pollCount)');
           
           // Check if job is complete
-          if (status == 'completed' || status == 'finished') {
+          if (status == 'completed' || status == 'finished' || status == 'success') {
             print('✅ Job $jobId completed! Fetching results...');
             timer.cancel();
             _activePollers.remove(jobId);
             
-            // Try multiple ways to get results
+            // Try to get real results
             if (sessionId != null) {
-              // Method 1: Standard results endpoint
               var results = await getResults(sessionId);
               
-              // Method 2: Try direct session info endpoint if method 1 fails
-              if (results == null) {
-                print('🔄 Trying session info endpoint for $sessionId');
-                try {
-                  final sessionResponse = await http.get(
-                    Uri.parse('$baseUrl/session-info/$sessionId'),
-                    headers: {
-                      'Accept': 'application/json',
-                      'User-Agent': 'Bookey-Flutter-App/1.0',
-                    },
-                  ).timeout(Duration(seconds: 10));
-                  
-                  if (sessionResponse.statusCode == 200) {
-                    results = json.decode(sessionResponse.body);
-                    print('✅ Results fetched via session-info endpoint');
-                  }
-                } catch (e) {
-                  print('❌ Session info endpoint failed: $e');
-                }
-              }
-              
-              // Method 3: Create comprehensive mock results from job completion status
-              if (results == null) {
-                print('🔄 Creating comprehensive mock results from job completion status');
-                
-                // Get some info from the original API response if available
-                final sessionParts = sessionId.split('_');
-                final dateStr = sessionParts.length > 1 ? sessionParts[1] : 'unknown';
-                
-                results = {
-                  'success': true,
-                  'message': 'Processing completed successfully - Results stored in backend',
-                  'session_id': sessionId,
-                  'job_id': jobId,
-                  'status': 'completed',
-                  'processing_date': dateStr,
-                  'total_items': 1, // Changed from total_page_batches
-                  'total_words': 423,
-                  'estimated_reading_time_minutes': 2.0,
-                  'processing_time_seconds': 20.0,
-                  'file_name': 'Processed Content',
-                  
-                  // ✅ CRITICAL FIX: Use 'pages' field for ProcessingResult.fromNewApiResponse
-                  'pages': [
-                    {
-                      'page_number': 1,
-                      'text': 'Your content has been successfully processed by our AI system. The backend has extracted text from your uploaded content, cleaned it for optimal readability, and stored the results securely. Processing completed with 423 words extracted and optimized.',
-                      'cleaned_text': 'Content processed successfully. AI system extracted and cleaned text from uploaded content. Results stored securely in backend with 423 words processed and optimized for reading.',
-                      'word_count': 423,
-                      'cleaned': true,
-                      'improvement_ratio': 0.89,
-                      'processing_method': 'ai_processing'
-                    }
-                  ]
-                };
-                print('📋 Using comprehensive mock results for session $sessionId');
-              }
-              
               if (results != null) {
-                print('🎉 Results ready for session $sessionId');
+                print('🎉 Real results fetched for session $sessionId');
                 
-                // ✅ CRITICAL FIX: Convert results to ProcessingResult and update UI
+                // Convert results to ProcessingResult and trigger callback
                 try {
-                  // Create a proper ProcessingResult from mock or real results
                   final processedResult = ProcessingResult.fromNewApiResponse(results);
-                  
-                  // ✅ NEW: Trigger callback AND navigate to processing page
                   _resultCallbacks[jobId]?.call(results);
                   
-                  // ✅ NEW: Force navigation to processing page with results
+                  // Navigate to processing page
                   Future.delayed(Duration(milliseconds: 500), () {
-                    print('🔄 Auto-navigating to processing page with results');
                     NavigationService().navigateToProcessing();
-                    
-                    // ✅ NEW: Find and update processing page directly
-                    // This ensures the UI actually shows the results
-                    _updateProcessingPageWithResults(processedResult);
                   });
                   
                 } catch (e) {
-                  print('❌ Error converting results to ProcessingResult: $e');
-                  // Still trigger callback with raw results
+                  print('❌ Error converting results: $e');
                   _resultCallbacks[jobId]?.call(results);
                 }
+              } else {
+                print('❌ Failed to get results for session $sessionId');
+                // Create fallback result with useful info
+                final fallbackResult = {
+                  'success': true,
+                  'message': 'Processing completed - results may take a moment to appear',
+                  'file_name': 'Processed Content',
+                  'total_items': 1,
+                  'total_words': 0,
+                  'estimated_reading_time_minutes': 1.0,
+                  'processing_time_seconds': 30.0,
+                  'pages': [
+                    {
+                      'page_number': 1,
+                      'title': 'Processed Content',
+                      'text': 'Processing completed successfully. If content is not showing, please try refreshing or check back in a moment.',
+                      'cleaned_text': 'Content processing has finished. Results should appear shortly.',
+                      'word_count': 20,
+                      'cleaned': true,
+                    }
+                  ]
+                };
+                _resultCallbacks[jobId]?.call(fallbackResult);
               }
             }
           } else if (status == 'failed' || status == 'error') {
@@ -1519,23 +1799,9 @@ class BackgroundJobApiService {
     _resultCallbacks.clear();
   }
   
-  // ✅ NEW: Helper method to update processing page with results
-  static void _updateProcessingPageWithResults(ProcessingResult result) {
-    try {
-      // This is a workaround to ensure results show in Processing tab
-      // You might need to implement this differently based on your app structure
-      print('📋 Attempting to update processing page with results');
-      print('📊 Result contains ${result.pageBatches.length} page batches');
-      print('📊 Total words: ${result.totalWords}');
-      
-      // For debugging - show what data we have
-      for (int i = 0; i < result.pageBatches.length && i < 3; i++) {
-        final batch = result.pageBatches[i];
-        print('📄 Page ${i + 1}: ${batch.cleanedText.length} characters');
-      }
-      
-    } catch (e) {
-      print('❌ Error updating processing page: $e');
-    }
+  // Helper method to generate session IDs
+  static String _generateSessionId() {
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    return 'session_${timestamp}_${timestamp.hashCode.abs().toString().substring(0, 6)}';
   }
 }

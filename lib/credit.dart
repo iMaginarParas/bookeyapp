@@ -166,6 +166,25 @@ class RevenueCatService {
   }
 }
 
+// Haptic feedback service
+class HapticService {
+  static void lightImpact() {
+    HapticFeedback.lightImpact();
+  }
+  
+  static void mediumImpact() {
+    HapticFeedback.mediumImpact();
+  }
+  
+  static void heavyImpact() {
+    HapticFeedback.heavyImpact();
+  }
+  
+  static void selectionClick() {
+    HapticFeedback.selectionClick();
+  }
+}
+
 class SubscriptionPlan {
   final String id;
   final String name;
@@ -227,8 +246,10 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
   bool _hasActiveSubscription = false;
   List<StoreProduct> _availableProducts = [];
   
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
+  late AnimationController _fadeController;
+  late AnimationController _slideController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
 
   // Subscription Plans - Updated to yearly pricing
   final List<SubscriptionPlan> _subscriptionPlans = [
@@ -240,136 +261,114 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
       credits: 100,
       duration: 'Yearly',
       features: [
-        '100 credits per month (1200/year)',
-        'Approximately 170+ videos per year',
-        'Priority processing',
-        'Email support',
-        'Early access to new features',
-        'No ads',
+        '100 credits per year',
+        'Premium AI processing',
+        'Priority support',
+        'Advanced features',
+        'No ads'
       ],
       isPopular: true,
       revenueCatProductId: 'bookey_pro_yearly',
     ),
   ];
 
-  // Credit Packages - Updated with RevenueCat product IDs
   final List<CreditPackage> _creditPackages = [
     CreditPackage(
-      id: 'credits_50',
+      id: 'credits_10',
       name: 'Starter Pack',
-      price: 50.0,
+      price: 9.99,
+      credits: 10,
+      bonus: '1 scene',
+      revenueCatProductId: 'bookey_credits_10',
+    ),
+    CreditPackage(
+      id: 'credits_25',
+      name: 'Creator Pack',
+      price: 19.99,
+      credits: 25,
+      bonus: '3 scenes',
+      isPopular: true,
+      revenueCatProductId: 'bookey_credits_25',
+    ),
+    CreditPackage(
+      id: 'credits_50',
+      name: 'Studio Pack',
+      price: 34.99,
       credits: 50,
-      bonus: 'Perfect for trying out',
+      bonus: '7 scenes',
       revenueCatProductId: 'bookey_credits_50',
     ),
     CreditPackage(
       id: 'credits_100',
-      name: 'Popular Pack',
-      price: 100.0,
+      name: 'Professional Pack',
+      price: 59.99,
       credits: 100,
-      bonus: 'Most popular choice',
-      isPopular: true,
+      bonus: '14 scenes',
       revenueCatProductId: 'bookey_credits_100',
-    ),
-    CreditPackage(
-      id: 'credits_500',
-      name: 'Value Pack',
-      price: 500.0,
-      credits: 500,
-      bonus: 'Best value for money',
-      revenueCatProductId: 'bookey_credits_500',
-    ),
-    CreditPackage(
-      id: 'credits_1000',
-      name: 'Pro Pack',
-      price: 1000.0,
-      credits: 1000,
-      bonus: 'For power users',
-      revenueCatProductId: 'bookey_credits_1000',
     ),
   ];
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      duration: const Duration(seconds: 2),
+    
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 600),
       vsync: this,
     );
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-    _pulseController.repeat(reverse: true);
     
-    _initializeRevenueCat();
+    _slideController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeOut),
+    );
+
+    _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(
+      CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic),
+    );
+
+    _fadeController.forward();
+    _slideController.forward();
+    
     _loadWalletData();
-  }
-
-  Future<void> _initializeRevenueCat() async {
-    try {
-      await RevenueCatService.initialize();
-      await _checkSubscriptionStatus();
-      await _loadAvailableProducts();
-    } catch (e) {
-      print('Failed to initialize RevenueCat: $e');
-    }
-  }
-
-  Future<void> _checkSubscriptionStatus() async {
-    try {
-      final hasActiveSubscription = await RevenueCatService.hasActiveSubscription();
-      setState(() {
-        _hasActiveSubscription = hasActiveSubscription;
-      });
-    } catch (e) {
-      print('Error checking subscription status: $e');
-    }
-  }
-
-  Future<void> _loadAvailableProducts() async {
-    try {
-      final products = await RevenueCatService.getProducts();
-      setState(() {
-        _availableProducts = products;
-      });
-    } catch (e) {
-      print('Error loading products: $e');
-    }
   }
 
   @override
   void dispose() {
-    _pulseController.dispose();
+    _fadeController.dispose();
+    _slideController.dispose();
     super.dispose();
   }
-  
+
   Future<void> _loadWalletData() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-      });
-      
       final prefs = await SharedPreferences.getInstance();
       final jwtToken = prefs.getString('access_token');
-      
-      if (jwtToken == null) {
+
+      if (jwtToken != null) {
+        final walletInfo = await WalletService.getWalletInfo(jwtToken);
+        final transactions = await WalletService.getTransactionHistory(jwtToken);
+        final hasSubscription = await RevenueCatService.hasActiveSubscription();
+        final products = await RevenueCatService.getProducts();
+
         setState(() {
-          _errorMessage = 'Please log in to view your wallet';
+          _walletInfo = walletInfo;
+          _transactions = transactions;
+          _hasActiveSubscription = hasSubscription;
+          _availableProducts = products;
           _isLoading = false;
         });
-        return;
+      } else {
+        throw Exception('No authentication token found');
       }
-      
-      final walletInfo = await WalletService.getWalletInfo(jwtToken);
-      final transactions = await WalletService.getTransactionHistory(jwtToken, limit: 10);
-      
-      setState(() {
-        _walletInfo = walletInfo;
-        _transactions = transactions;
-        _isLoading = false;
-      });
-      
     } catch (e) {
       setState(() {
         _errorMessage = e.toString();
@@ -378,68 +377,220 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _purchaseSubscription(SubscriptionPlan plan) async {
+    if (plan.revenueCatProductId == null) return;
+    
+    HapticService.mediumImpact();
+    
+    setState(() {
+      _isPurchasing = true;
+    });
+
+    try {
+      final success = await RevenueCatService.purchaseSubscription(plan.revenueCatProductId!);
+      
+      if (success) {
+        HapticService.lightImpact();
+        _showSnackBar('Subscription activated successfully!', isError: false);
+        await _loadWalletData(); // Refresh data
+      } else {
+        throw Exception('Purchase failed');
+      }
+    } catch (e) {
+      HapticService.heavyImpact();
+      _showSnackBar('Purchase failed: ${e.toString()}', isError: true);
+    } finally {
+      setState(() {
+        _isPurchasing = false;
+      });
+    }
+  }
+
+  Future<void> _purchaseCredits(CreditPackage package) async {
+    if (package.revenueCatProductId == null) return;
+    
+    HapticService.mediumImpact();
+    
+    setState(() {
+      _isPurchasing = true;
+    });
+
+    try {
+      final success = await RevenueCatService.purchaseCredits(package.revenueCatProductId!);
+      
+      if (success) {
+        HapticService.lightImpact();
+        _showSnackBar('Credits purchased successfully!', isError: false);
+        await _loadWalletData(); // Refresh data
+      } else {
+        throw Exception('Purchase failed');
+      }
+    } catch (e) {
+      HapticService.heavyImpact();
+      _showSnackBar('Purchase failed: ${e.toString()}', isError: true);
+    } finally {
+      setState(() {
+        _isPurchasing = false;
+      });
+    }
+  }
+
+  void _showSnackBar(String message, {required bool isError}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        backgroundColor: isError ? const Color(0xFFDC2626) : const Color(0xFF10B981),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        elevation: 6,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0F),
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text(
-          'Credits & Billing',
-          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
-        ),
-        backgroundColor: const Color(0xFF1A1A23),
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFF1E293B), size: 20),
+          onPressed: () {
+            HapticService.lightImpact();
+            Navigator.pop(context);
+          },
+        ),
+        title: const Text(
+          'Credits & Plans',
+          style: TextStyle(
+            color: Color(0xFF1E293B),
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadWalletData,
+            icon: const Icon(Icons.refresh, color: Color(0xFF64748B), size: 20),
+            onPressed: () {
+              HapticService.lightImpact();
+              _loadWalletData();
+            },
           ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(50),
-          child: Container(
-            height: 50,
-            child: Row(
-              children: [
-                Expanded(child: _buildTabButton('Overview', 0)),
-                Expanded(child: _buildTabButton('Subscriptions', 1)),
-                Expanded(child: _buildTabButton('Buy Credits', 2)),
-              ],
-            ),
-          ),
-        ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-              ? _buildErrorState()
-              : _buildTabContent(),
+      body: _isLoading ? _buildLoadingState() : _buildContent(),
     );
   }
-  
-  
-  Widget _buildTabButton(String title, int index) {
-    final isSelected = _selectedTabIndex == index;
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedTabIndex = index;
-        });
-      },
-      child: Container(
-        height: 50,
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF6366F1) : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
+
+  Widget _buildLoadingState() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
+            strokeWidth: 3,
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Loading your account...',
+            style: TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    if (_errorMessage != null) {
+      return _buildErrorState();
+    }
+
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: SlideTransition(
+        position: _slideAnimation,
+        child: Column(
+          children: [
+            _buildTabBar(),
+            Expanded(
+              child: _buildTabContent(),
+            ),
+          ],
         ),
-        child: Center(
+      ),
+    );
+  }
+
+  Widget _buildTabBar() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2563EB).withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          _buildTab('Overview', 0),
+          _buildTab('Plans', 1),
+          _buildTab('Buy Credits', 2),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTab(String title, int index) {
+    final isSelected = _selectedTabIndex == index;
+    
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          if (_selectedTabIndex != index) {
+            HapticService.selectionClick();
+          }
+          setState(() {
+            _selectedTabIndex = index;
+          });
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          margin: const EdgeInsets.all(4),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF2563EB) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
           child: Text(
             title,
+            textAlign: TextAlign.center,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.white70,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-              fontSize: 13,
+              color: isSelected ? Colors.white : const Color(0xFF64748B),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
@@ -452,674 +603,29 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
       case 0:
         return _buildOverviewTab();
       case 1:
-        return _buildSubscriptionsTab();
+        return _buildSubscriptionTab();
       case 2:
-        return _buildBuyCreditsTab();
+        return _buildCreditsTab();
       default:
         return _buildOverviewTab();
     }
   }
 
   Widget _buildOverviewTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildCurrentBalance(),
-          const SizedBox(height: 32),
-          _buildUsageStats(),
-          const SizedBox(height: 32),
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      children: [
+        _buildCurrentBalance(),
+        const SizedBox(height: 20),
+        _buildQuickStats(),
+        const SizedBox(height: 20),
+        if (_walletInfo?.pricingStructure != null) ...[
           _buildPricingInfo(),
-          const SizedBox(height: 32),
-          _buildTransactionHistory(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSubscriptionsTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Subscription Status Card
-          if (_hasActiveSubscription)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              margin: const EdgeInsets.only(bottom: 24),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF10B981), Color(0xFF059669)],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF10B981).withOpacity(0.3),
-                    blurRadius: 15,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  const Icon(Icons.verified, color: Colors.white, size: 32),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Active Subscription',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'You have an active Pro subscription',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white.withOpacity(0.9),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          
-          const Text(
-            'Choose Your Plan',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Get credits every month with our subscription plans',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.white.withOpacity(0.7),
-            ),
-          ),
-          const SizedBox(height: 32),
-          ..._subscriptionPlans.map((plan) => _buildSubscriptionCard(plan)).toList(),
-          
-          const SizedBox(height: 24),
-          
-          // Restore Purchases Button
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: OutlinedButton.icon(
-              onPressed: _isPurchasing ? null : _restorePurchases,
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(color: const Color(0xFF6366F1).withOpacity(0.5)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              icon: _isPurchasing 
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
-                      ),
-                    )
-                  : const Icon(Icons.restore, color: Color(0xFF6366F1)),
-              label: Text(
-                _isPurchasing ? 'Restoring...' : 'Restore Purchases',
-                style: const TextStyle(
-                  color: Color(0xFF6366F1),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBuyCreditsTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Buy Credits',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Purchase credits for immediate use',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.white.withOpacity(0.7),
-            ),
-          ),
-          const SizedBox(height: 32),
-          SizedBox(
-            height: 400, // Fixed height for the grid
-            child: GridView.builder(
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                childAspectRatio: 0.8,
-              ),
-              itemCount: _creditPackages.length,
-              itemBuilder: (context, index) {
-                return _buildCreditPackageCard(_creditPackages[index]);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSubscriptionCard(SubscriptionPlan plan) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A23),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: plan.isPopular 
-              ? const Color(0xFF6366F1) 
-              : const Color(0xFF6366F1).withOpacity(0.2),
-          width: plan.isPopular ? 2 : 1,
-        ),
-        boxShadow: plan.isPopular
-            ? [
-                BoxShadow(
-                  color: const Color(0xFF6366F1).withOpacity(0.3),
-                  blurRadius: 20,
-                  spreadRadius: 2,
-                ),
-              ]
-            : null,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (plan.isPopular)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFF6366F1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Text(
-                'POPULAR',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          if (plan.isPopular) const SizedBox(height: 16),
-          Text(
-            plan.name,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            plan.description,
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.white.withOpacity(0.7),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              const Text(
-                '₹',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF6366F1),
-                ),
-              ),
-              Text(
-                plan.price.toInt().toString(),
-                style: const TextStyle(
-                  fontSize: 36,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-              ),
-              Text(
-                '/${plan.duration.toLowerCase()}',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.white.withOpacity(0.6),
-                ),
-              ),
-            ],
-          ),
           const SizedBox(height: 20),
-          ...plan.features.map((feature) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.check_circle,
-                  color: Color(0xFF10B981),
-                  size: 20,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    feature,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          )).toList(),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton(
-              onPressed: (_isPurchasing || _hasActiveSubscription) 
-                  ? null 
-                  : () => _purchaseSubscription(plan),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _hasActiveSubscription 
-                    ? const Color(0xFF10B981) 
-                    : const Color(0xFF6366F1),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 0,
-                disabledBackgroundColor: Colors.grey.withOpacity(0.3),
-              ),
-              child: _isPurchasing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                  : Text(
-                      _hasActiveSubscription ? 'Active Subscription' : 'Subscribe Now',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-            ),
-          ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildCreditPackageCard(CreditPackage package) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A23),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: package.isPopular 
-              ? const Color(0xFF6366F1) 
-              : const Color(0xFF6366F1).withOpacity(0.2),
-          width: package.isPopular ? 2 : 1,
-        ),
-        boxShadow: package.isPopular
-            ? [
-                BoxShadow(
-                  color: const Color(0xFF6366F1).withOpacity(0.3),
-                  blurRadius: 15,
-                  spreadRadius: 1,
-                ),
-              ]
-            : null,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (package.isPopular)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFF6366F1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                'POPULAR',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 8,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          if (package.isPopular) const SizedBox(height: 12),
-          Text(
-            package.name,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              const Text(
-                '₹',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF6366F1),
-                ),
-              ),
-              Text(
-                package.price.toInt().toString(),
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFF10B981).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '${package.credits} Credits',
-              style: const TextStyle(
-                color: Color(0xFF10B981),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (package.bonus.isNotEmpty)
-            Text(
-              package.bonus,
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.white.withOpacity(0.6),
-              ),
-            ),
-          const Spacer(),
-          SizedBox(
-            width: double.infinity,
-            height: 36,
-            child: ElevatedButton(
-              onPressed: _isPurchasing ? null : () => _purchaseCredits(package),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6366F1),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                elevation: 0,
-                disabledBackgroundColor: Colors.grey.withOpacity(0.3),
-              ),
-              child: _isPurchasing
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                  : const Text(
-                      'Buy Now',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _purchaseSubscription(SubscriptionPlan plan) async {
-    if (_isPurchasing || plan.revenueCatProductId == null) return;
-
-    setState(() {
-      _isPurchasing = true;
-    });
-
-    try {
-      final success = await RevenueCatService.purchaseSubscription(plan.revenueCatProductId!);
-      
-      if (success) {
-        // Show success message
-        _showSuccessDialog('Subscription', 'Successfully subscribed to ${plan.name}!');
-        
-        // Refresh subscription status and wallet data
-        await _checkSubscriptionStatus();
-        await _loadWalletData();
-      } else {
-        _showErrorDialog('Purchase failed', 'Unable to complete the subscription purchase. Please try again.');
-      }
-    } catch (e) {
-      String errorMessage = 'An error occurred during purchase.';
-      
-      if (e.toString().contains('cancelled')) {
-        errorMessage = 'Purchase was cancelled.';
-      } else if (e.toString().contains('pending')) {
-        errorMessage = 'Payment is pending. Please check your payment method.';
-      } else if (e.toString().contains('not available')) {
-        errorMessage = 'This product is not available for purchase.';
-      }
-      
-      _showErrorDialog('Purchase Error', errorMessage);
-    } finally {
-      setState(() {
-        _isPurchasing = false;
-      });
-    }
-  }
-
-  Future<void> _purchaseCredits(CreditPackage package) async {
-    if (_isPurchasing || package.revenueCatProductId == null) return;
-
-    setState(() {
-      _isPurchasing = true;
-    });
-
-    try {
-      final success = await RevenueCatService.purchaseCredits(package.revenueCatProductId!);
-      
-      if (success) {
-        // Show success message
-        _showSuccessDialog('Credits', 'Successfully purchased ${package.credits} credits!');
-        
-        // Refresh wallet data to show new credits
-        await _loadWalletData();
-      } else {
-        _showErrorDialog('Purchase failed', 'Unable to complete the credit purchase. Please try again.');
-      }
-    } catch (e) {
-      String errorMessage = 'An error occurred during purchase.';
-      
-      if (e.toString().contains('cancelled')) {
-        errorMessage = 'Purchase was cancelled.';
-      } else if (e.toString().contains('pending')) {
-        errorMessage = 'Payment is pending. Please check your payment method.';
-      } else if (e.toString().contains('not available')) {
-        errorMessage = 'This product is not available for purchase.';
-      }
-      
-      _showErrorDialog('Purchase Error', errorMessage);
-    } finally {
-      setState(() {
-        _isPurchasing = false;
-      });
-    }
-  }
-
-  void _showSuccessDialog(String type, String message) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1A1A23),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              const Icon(Icons.check_circle, color: Color(0xFF10B981), size: 28),
-              const SizedBox(width: 12),
-              Text(
-                'Success!',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-          content: Text(
-            message,
-            style: TextStyle(color: Colors.white.withOpacity(0.8)),
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10B981),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text('Great!', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showErrorDialog(String title, String message) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1A1A23),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              const Icon(Icons.error_outline, color: Color(0xFFEF4444), size: 28),
-              const SizedBox(width: 12),
-              Text(
-                title,
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-          content: Text(
-            message,
-            style: TextStyle(color: Colors.white.withOpacity(0.8)),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(
-                'OK',
-                style: TextStyle(color: Colors.white.withOpacity(0.6)),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // Add restore purchases method
-  Future<void> _restorePurchases() async {
-    setState(() {
-      _isPurchasing = true;
-    });
-
-    try {
-      final customerInfo = await RevenueCatService.restorePurchases();
-      
-      // Check if any entitlements were restored
-      if (customerInfo.entitlements.active.isNotEmpty) {
-        _showSuccessDialog('Restore', 'Your purchases have been successfully restored!');
-        await _checkSubscriptionStatus();
-        await _loadWalletData();
-      } else {
-        _showErrorDialog('No Purchases', 'No previous purchases were found to restore.');
-      }
-    } catch (e) {
-      _showErrorDialog('Restore Failed', 'Unable to restore purchases. Please try again.');
-    } finally {
-      setState(() {
-        _isPurchasing = false;
-      });
-    }
-  }
-
-  Widget _buildErrorState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: Color(0xFFEF4444), size: 64),
-            const SizedBox(height: 16),
-            Text(
-              _errorMessage ?? 'An error occurred',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontSize: 16),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _loadWalletData,
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1)),
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
+        _buildTransactionHistory(),
+        const SizedBox(height: 80), // Bottom padding for navigation
+      ],
     );
   }
 
@@ -1128,52 +634,63 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
     
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(32),
+      padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF6366F1), Color(0xFF8B5CF6), Color(0xFFEC4899)],
+          colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
         ),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF6366F1).withOpacity(0.3),
+            color: const Color(0xFF2563EB).withOpacity(0.25),
             blurRadius: 20,
             spreadRadius: 2,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Column(
         children: [
-          AnimatedBuilder(
-            animation: _pulseAnimation,
-            builder: (context, child) {
-              return Transform.scale(
-                scale: _pulseAnimation.value,
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.account_balance_wallet,
-                    color: Color(0xFFFFD700),
-                    size: 48,
-                  ),
-                ),
-              );
-            },
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.account_balance_wallet_outlined,
+              color: Colors.white,
+              size: 32,
+            ),
           ),
-          const SizedBox(height: 20),
-          const Text('Current Balance', style: TextStyle(color: Colors.white70, fontSize: 16)),
-          const SizedBox(height: 8),
-          Text('$credits Credits', style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800)),
           const SizedBox(height: 16),
+          const Text(
+            'Current Balance',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$credits Credits',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
           Text(
             'Approximately ${(credits / 7).floor()} scenes worth of content',
-            style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14),
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.8),
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -1181,41 +698,47 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildUsageStats() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A23),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Usage Statistics', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(child: _buildStatCard('Total Purchased', '${_walletInfo?.totalCreditsPurchased ?? 0}', Icons.add_circle, const Color(0xFF10B981))),
-              const SizedBox(width: 16),
-              Expanded(child: _buildStatCard('Total Used', '${_walletInfo?.totalCreditsUsed ?? 0}', Icons.trending_down, const Color(0xFFEF4444))),
-            ],
+  Widget _buildQuickStats() {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildStatCard(
+            'Total Purchased',
+            '${_walletInfo?.totalCreditsPurchased ?? 0}',
+            Icons.add_circle_outline,
+            const Color(0xFF10B981),
           ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildStatCard(
+            'Total Used',
+            '${_walletInfo?.totalCreditsUsed ?? 0}',
+            Icons.trending_down,
+            const Color(0xFFEF4444),
+          ),
+        ),
+      ],
     );
   }
-  
-  Widget _buildPricingInfo() {
-    final pricing = _walletInfo?.pricingStructure;
-    if (pricing == null) return const SizedBox.shrink();
-    
+
+  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A23),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.2)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: color.withOpacity(0.2),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1225,66 +748,136 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF6366F1).withOpacity(0.1),
+                  color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.info_outline, color: Color(0xFF6366F1), size: 20),
+                child: Icon(icon, color: color, size: 18),
               ),
-              const SizedBox(width: 12),
-              const Text('Pricing Breakdown', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
+              const Spacer(),
             ],
           ),
-          const SizedBox(height: 20),
-          _buildPricingRow('Image Generation', pricing.imageGeneration),
-          _buildPricingRow('Audio Generation', pricing.audioGeneration),
-          _buildPricingRow('Video Processing', pricing.videoProcessing),
-          _buildPricingRow('Service Fee', pricing.serviceFee),
-          const Divider(color: Colors.white24, height: 32),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Total per Scene', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
-              Text('${pricing.totalPerScene} credits', style: const TextStyle(color: Color(0xFF10B981), fontSize: 18, fontWeight: FontWeight.w800)),
-            ],
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
           ),
-        ],
-      ),
-    );
-  }
-  
-  Widget _buildPricingRow(String label, int credits) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14)),
-          Text('$credits credit${credits != 1 ? 's' : ''}', style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF64748B),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildPricingInfo() {
+    final pricing = _walletInfo?.pricingStructure;
+    if (pricing == null) return const SizedBox.shrink();
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF2563EB).withOpacity(0.1),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2563EB).withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, color: color, size: 20),
-              const Spacer(),
-              Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: color)),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2563EB).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.info_outline, color: Color(0xFF2563EB), size: 18),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Pricing Breakdown',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(title, style: const TextStyle(fontSize: 14, color: Colors.white70)),
+          const SizedBox(height: 16),
+          _buildPricingRow('Image Generation', pricing.imageGeneration),
+          _buildPricingRow('Audio Generation', pricing.audioGeneration),
+          _buildPricingRow('Video Processing', pricing.videoProcessing),
+          _buildPricingRow('Service Fee', pricing.serviceFee),
+          const Divider(color: Color(0xFFE2E8F0), height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Total per Scene',
+                style: TextStyle(
+                  color: Color(0xFF1E293B),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                '${pricing.totalPerScene} credits',
+                style: const TextStyle(
+                  color: Color(0xFF10B981),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPricingRow(String label, int credits) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          Text(
+            '$credits credit${credits != 1 ? 's' : ''}',
+            style: const TextStyle(
+              color: Color(0xFF1E293B),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );
@@ -1292,22 +885,58 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
 
   Widget _buildTransactionHistory() {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A23),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.2)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF2563EB).withOpacity(0.1),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2563EB).withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Recent Transactions', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
-          const SizedBox(height: 20),
+          const Text(
+            'Recent Transactions',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          const SizedBox(height: 16),
           if (_transactions.isEmpty)
-            const Center(child: Padding(
-              padding: EdgeInsets.all(32),
-              child: Text('No transactions yet', style: TextStyle(color: Colors.white60, fontSize: 14)),
-            ))
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.receipt_long_outlined,
+                      color: Color(0xFF94A3B8),
+                      size: 32,
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'No transactions yet',
+                      style: TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
           else
             ..._transactions.take(5).map((transaction) => _buildTransactionItem(transaction)).toList(),
         ],
@@ -1319,7 +948,7 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
     final color = transaction.amountColor;
     
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
           Container(
@@ -1328,28 +957,559 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
               color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(transaction.isCredit ? Icons.add_circle : Icons.remove_circle, color: color, size: 20),
+            child: Icon(
+              transaction.isCredit ? Icons.add_circle_outline : Icons.remove_circle_outline,
+              color: color,
+              size: 18,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(transaction.description, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
-                Text(_formatDate(transaction.createdAt), style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12)),
+                Text(
+                  transaction.description,
+                  style: const TextStyle(
+                    color: Color(0xFF1E293B),
+                    fontWeight: FontWeight.w500,
+                    fontSize: 14,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _formatDate(transaction.createdAt),
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
               ],
             ),
           ),
-          Text(transaction.formattedAmount, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 16)),
+          Text(
+            transaction.formattedAmount,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
         ],
       ),
     );
   }
-  
+
+  Widget _buildSubscriptionTab() {
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      children: [
+        if (_hasActiveSubscription) ...[
+          _buildActiveSubscriptionCard(),
+          const SizedBox(height: 20),
+        ],
+        const Text(
+          'Subscription Plans',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF1E293B),
+          ),
+        ),
+        const SizedBox(height: 16),
+        ..._subscriptionPlans.map((plan) => _buildSubscriptionCard(plan)).toList(),
+        const SizedBox(height: 80),
+      ],
+    );
+  }
+
+  Widget _buildActiveSubscriptionCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF10B981), Color(0xFF059669)],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF10B981).withOpacity(0.25),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.verified, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Active Subscription',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'You have an active Pro subscription with unlimited access to all features.',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubscriptionCard(SubscriptionPlan plan) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: plan.isPopular 
+              ? const Color(0xFF2563EB) 
+              : const Color(0xFFE2E8F0),
+          width: plan.isPopular ? 2 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: (plan.isPopular 
+                ? const Color(0xFF2563EB) 
+                : const Color(0xFF64748B)).withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          if (plan.isPopular)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
+                  ),
+                  borderRadius: BorderRadius.only(
+                    topRight: Radius.circular(16),
+                    bottomLeft: Radius.circular(16),
+                  ),
+                ),
+                child: const Text(
+                  'POPULAR',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            plan.name,
+                            style: const TextStyle(
+                              color: Color(0xFF1E293B),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            plan.description,
+                            style: const TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '\$${plan.price.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            color: Color(0xFF1E293B),
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          plan.duration.toLowerCase(),
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ...plan.features.map((feature) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: Color(0xFF10B981), size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          feature,
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )).toList(),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton(
+                    onPressed: _isPurchasing || _hasActiveSubscription
+                        ? null
+                        : () => _purchaseSubscription(plan),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: plan.isPopular 
+                          ? const Color(0xFF2563EB)
+                          : Colors.white,
+                      foregroundColor: plan.isPopular 
+                          ? Colors.white 
+                          : const Color(0xFF2563EB),
+                      disabledBackgroundColor: const Color(0xFFE2E8F0),
+                      elevation: 0,
+                      side: plan.isPopular 
+                          ? null
+                          : const BorderSide(color: Color(0xFF2563EB)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _isPurchasing
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Text(
+                            _hasActiveSubscription ? 'Active' : 'Subscribe',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCreditsTab() {
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      children: [
+        const Text(
+          'Credit Packages',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF1E293B),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Purchase credits to create amazing content with AI',
+          style: TextStyle(
+            fontSize: 14,
+            color: Color(0xFF64748B),
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+        const SizedBox(height: 20),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 0.85,
+          ),
+          itemCount: _creditPackages.length,
+          itemBuilder: (context, index) {
+            return _buildCreditPackageCard(_creditPackages[index]);
+          },
+        ),
+        const SizedBox(height: 80),
+      ],
+    );
+  }
+
+  Widget _buildCreditPackageCard(CreditPackage package) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: package.isPopular 
+              ? const Color(0xFF2563EB) 
+              : const Color(0xFFE2E8F0),
+          width: package.isPopular ? 2 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: (package.isPopular 
+                ? const Color(0xFF2563EB) 
+                : const Color(0xFF64748B)).withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          if (package.isPopular)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
+                  ),
+                  borderRadius: BorderRadius.only(
+                    topRight: Radius.circular(16),
+                    bottomLeft: Radius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  'BEST',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+                Text(
+                  package.name,
+                  style: const TextStyle(
+                    color: Color(0xFF1E293B),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Text(
+                      '\$${package.price.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: Color(0xFF2563EB),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '${package.credits} Credits',
+                    style: const TextStyle(
+                      color: Color(0xFF10B981),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (package.bonus.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    package.bonus,
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                SizedBox(
+                  width: double.infinity,
+                  height: 36,
+                  child: ElevatedButton(
+                    onPressed: _isPurchasing ? null : () => _purchaseCredits(package),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: package.isPopular 
+                          ? const Color(0xFF2563EB)
+                          : Colors.white,
+                      foregroundColor: package.isPopular 
+                          ? Colors.white 
+                          : const Color(0xFF2563EB),
+                      disabledBackgroundColor: const Color(0xFFE2E8F0),
+                      elevation: 0,
+                      side: package.isPopular 
+                          ? null
+                          : const BorderSide(color: Color(0xFF2563EB), width: 1),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: _isPurchasing
+                        ? const SizedBox(
+                            height: 12,
+                            width: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : const Text(
+                            'Purchase',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEF4444).withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.error_outline,
+              color: Color(0xFFEF4444),
+              size: 32,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Something went wrong',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _errorMessage ?? 'An unexpected error occurred',
+            style: const TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () {
+              HapticService.lightImpact();
+              _loadWalletData();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2563EB),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     final difference = now.difference(date);
-    
+
     if (difference.inDays == 0) return 'Today';
     if (difference.inDays == 1) return 'Yesterday';
     if (difference.inDays < 7) return '${difference.inDays} days ago';

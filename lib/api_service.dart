@@ -525,11 +525,20 @@ class ApiService {
     }
   }
 
-  // ================== UPDATED IMAGE/AUDIO PROCESSING METHODS ==================
+  // ================== ENHANCED IMAGE/AUDIO PROCESSING METHODS ==================
 
   static Future<ProcessingResult> processImages(List<File> files,
       {int maxConcurrent = 5}) async {
     try {
+      // Enhanced debugging - check API health first
+      print('🔍 [IMAGE] Checking API health before upload...');
+      final isHealthy = await checkMediaApiHealth();
+      if (!isHealthy) {
+        print('❌ [IMAGE] API health check failed');
+        throw Exception('Media API is not responding. Please try again later.');
+      }
+      print('✅ [IMAGE] API health check passed');
+
       final uri = Uri.parse('$mediaApiUrl/process-images');
       final request = http.MultipartRequest('POST', uri);
 
@@ -540,7 +549,16 @@ class ApiService {
       final sessionId = _generateSessionId();
       request.fields['session_id'] = sessionId;
 
+      print('📋 [IMAGE] Request details:');
+      print('   URL: $uri');
+      print('   Max concurrent: $maxConcurrent');
+      print('   Session ID: $sessionId');
+      print('   Files count: ${files.length}');
+
       for (int i = 0; i < files.length; i++) {
+        final fileSize = await files[i].length();
+        print('   File ${i + 1}: ${files[i].path.split('/').last} ($fileSize bytes)');
+        
         request.files.add(
           await http.MultipartFile.fromPath(
             'files',
@@ -555,30 +573,61 @@ class ApiService {
         'User-Agent': 'Bookey-Flutter-App/1.0',
       });
 
-      print('Sending images to unified API: $mediaApiUrl/process-images');
+      print('📤 [IMAGE] Sending request to: $uri');
       final streamedResponse = 
           await request.send().timeout(Duration(seconds: timeoutSeconds));
       final response = await http.Response.fromStream(streamedResponse);
 
-      print('Image API Response Status: ${response.statusCode}');
-      print('Image API Response Body: ${response.body}');
+      print('📥 [IMAGE] Response received:');
+      print('   Status: ${response.statusCode}');
+      print('   Headers: ${response.headers}');
+      print('   Body length: ${response.body.length} chars');
+      print('   Body preview: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}');
 
       if (response.statusCode == 200) {
-        final jsonData = json.decode(response.body);
-        return ProcessingResult.fromNewApiResponse(jsonData);
+        try {
+          final jsonData = json.decode(response.body);
+          print('✅ [IMAGE] Successfully parsed JSON response');
+          return ProcessingResult.fromNewApiResponse(jsonData);
+        } catch (e) {
+          print('❌ [IMAGE] JSON parsing failed: $e');
+          print('Raw response: ${response.body}');
+          throw Exception('Invalid JSON response from server: $e');
+        }
       } else {
-        final errorData = json.decode(response.body);
-        throw Exception(errorData['detail'] ?? 'Failed to process images');
+        print('❌ [IMAGE] HTTP error: ${response.statusCode}');
+        try {
+          final errorData = json.decode(response.body);
+          final errorMsg = errorData['detail'] ?? errorData['message'] ?? 'Failed to process images';
+          throw Exception('Server error: $errorMsg');
+        } catch (e) {
+          throw Exception('Server error ${response.statusCode}: ${response.body}');
+        }
       }
     } catch (e) {
-      print('Image processing error: $e');
-      throw Exception('Image processing error: ${e.toString()}');
+      print('💥 [IMAGE] Processing error: $e');
+      if (e.toString().contains('TimeoutException')) {
+        throw Exception('Request timeout after ${timeoutSeconds}s. Try with smaller files or check your connection.');
+      } else if (e.toString().contains('SocketException') || e.toString().contains('Connection refused')) {
+        throw Exception('Cannot connect to server. Check your internet connection.');
+      } else {
+        throw Exception('Image processing error: ${e.toString()}');
+      }
     }
   }
 
   static Future<ProcessingResult> processImagesWeb(List<PlatformFile> webFiles,
       {int maxConcurrent = 5}) async {
     try {
+      // Enhanced debugging - check API health first
+      print('🔍 [IMAGE WEB] Checking API health before upload...');
+      final isHealthy = await checkMediaApiHealth();
+      if (!isHealthy) {
+        print('❌ [IMAGE WEB] API health check failed');
+        throw Exception('Media API is not responding. Please try again later.');
+      }
+      print('✅ [IMAGE WEB] API health check passed');
+
       final uri = Uri.parse('$mediaApiUrl/process-images');
       final request = http.MultipartRequest('POST', uri);
 
@@ -589,7 +638,20 @@ class ApiService {
       final sessionId = _generateSessionId();
       request.fields['session_id'] = sessionId;
 
-      for (var webFile in webFiles) {
+      print('📋 [IMAGE WEB] Request details:');
+      print('   URL: $uri');
+      print('   Max concurrent: $maxConcurrent');
+      print('   Session ID: $sessionId');
+      print('   Files count: ${webFiles.length}');
+
+      for (int i = 0; i < webFiles.length; i++) {
+        final webFile = webFiles[i];
+        if (webFile.bytes == null || webFile.bytes!.isEmpty) {
+          throw Exception('File ${webFile.name} has no content');
+        }
+        
+        print('   File ${i + 1}: ${webFile.name} (${webFile.bytes!.length} bytes)');
+        
         request.files.add(
           http.MultipartFile.fromBytes(
             'files',
@@ -604,36 +666,58 @@ class ApiService {
         'User-Agent': 'Bookey-Flutter-App/1.0',
       });
 
-      print('Sending web images to unified API: $mediaApiUrl/process-images');
+      print('📤 [IMAGE WEB] Sending request to: $uri');
       final streamedResponse = 
           await request.send().timeout(Duration(seconds: timeoutSeconds));
       final response = await http.Response.fromStream(streamedResponse);
 
-      print('Image API Response Status: ${response.statusCode}');
-      print('Image API Response Body: ${response.body}');
+      print('📥 [IMAGE WEB] Response received:');
+      print('   Status: ${response.statusCode}');
+      print('   Headers: ${response.headers}');
+      print('   Body length: ${response.body.length} chars');
+      print('   Body preview: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}');
 
       if (response.statusCode == 200) {
-        final jsonData = json.decode(response.body);
+        try {
+          final jsonData = json.decode(response.body);
+          
+          if (jsonData == null) {
+            throw Exception('Received null response from server');
+          }
 
-        // Add null checks here
-        if (jsonData == null) {
-          throw Exception('Received null response from server');
+          print('✅ [IMAGE WEB] Successfully parsed JSON response');
+          return ProcessingResult.fromNewApiResponse(jsonData);
+        } catch (e) {
+          print('❌ [IMAGE WEB] JSON parsing failed: $e');
+          print('Raw response: ${response.body}');
+          throw Exception('Invalid JSON response from server: $e');
         }
-
-        return ProcessingResult.fromNewApiResponse(jsonData);
       } else {
-        final errorData = json.decode(response.body);
-        throw Exception(errorData['detail'] ?? 'Failed to process images');
+        print('❌ [IMAGE WEB] HTTP error: ${response.statusCode}');
+        try {
+          final errorData = json.decode(response.body);
+          final errorMsg = errorData['detail'] ?? errorData['message'] ?? 'Failed to process images';
+          throw Exception('Server error: $errorMsg');
+        } catch (e) {
+          throw Exception('Server error ${response.statusCode}: ${response.body}');
+        }
       }
     } catch (e) {
-      print('Image processing error: $e');
-      throw Exception('Image processing error: ${e.toString()}');
+      print('💥 [IMAGE WEB] Processing error: $e');
+      if (e.toString().contains('TimeoutException')) {
+        throw Exception('Request timeout after ${timeoutSeconds}s. Try with smaller files or check your connection.');
+      } else if (e.toString().contains('SocketException') || e.toString().contains('Connection refused')) {
+        throw Exception('Cannot connect to server. Check your internet connection.');
+      } else {
+        throw Exception('Image processing error: ${e.toString()}');
+      }
     }
   }
 
   static Future<ProcessingResult> processCameraImages(List<String> base64Images,
       {int maxConcurrent = 5}) async {
     try {
+      print('🔍 [CAMERA] Starting camera image processing...');
       final uri = Uri.parse('$mediaApiUrl/camera-capture');
       
       // Create form data
@@ -647,6 +731,7 @@ class ApiService {
         formData['images'] = base64Images;
       }
 
+      print('📤 [CAMERA] Sending request to: $uri');
       final response = await http.post(
         uri,
         headers: {
@@ -657,6 +742,8 @@ class ApiService {
         body: formData,
       ).timeout(Duration(seconds: timeoutSeconds));
 
+      print('📥 [CAMERA] Response: ${response.statusCode}');
+
       if (response.statusCode == 200) {
         final jsonData = json.decode(response.body);
         return ProcessingResult.fromNewApiResponse(jsonData);
@@ -666,6 +753,7 @@ class ApiService {
             errorData['detail'] ?? 'Failed to process camera images');
       }
     } catch (e) {
+      print('💥 [CAMERA] Error: $e');
       throw Exception('Camera processing error: ${e.toString()}');
     }
   }
@@ -674,12 +762,14 @@ class ApiService {
       File? file, PlatformFile? webFile,
       {int maxConcurrent = 3}) async {
     try {
-      // First check if the media API is healthy
+      // Enhanced debugging - check API health first
+      print('🔍 [AUDIO] Checking audio API health...');
       final isHealthy = await checkMediaApiHealth();
       if (!isHealthy) {
-        throw Exception(
-            'Media processing API is currently unavailable. Please try again later.');
+        print('❌ [AUDIO] API health check failed');
+        throw Exception('Media processing API is currently unavailable. Please try again later.');
       }
+      print('✅ [AUDIO] API health check passed');
 
       final uri = Uri.parse('$mediaApiUrl/process-audio');
       final request = http.MultipartRequest('POST', uri);
@@ -691,11 +781,17 @@ class ApiService {
       final sessionId = _generateSessionId();
       request.fields['session_id'] = sessionId;
 
+      print('📋 [AUDIO] Request details:');
+      print('   URL: $uri');
+      print('   Session ID: $sessionId');
+
       if (kIsWeb && webFile != null) {
         // Check file size for web
         if (webFile.bytes != null && webFile.bytes!.length > 50 * 1024 * 1024) {
           throw Exception('File size too large. Maximum size is 50MB');
         }
+
+        print('   Web file: ${webFile.name} (${webFile.bytes?.length ?? 0} bytes)');
 
         request.files.add(
           http.MultipartFile.fromBytes(
@@ -710,6 +806,8 @@ class ApiService {
         if (fileSize > 50 * 1024 * 1024) {
           throw Exception('File size too large. Maximum size is 50MB');
         }
+
+        print('   Mobile file: ${file.path} ($fileSize bytes)');
 
         request.files.add(
           await http.MultipartFile.fromPath(
@@ -727,50 +825,62 @@ class ApiService {
         'User-Agent': 'Bookey-Flutter-App/1.0',
       });
 
-      print('Sending audio processing request to: $uri');
+      print('📤 [AUDIO] Sending audio processing request to: $uri');
 
       final streamedResponse = await request.send().timeout(
         Duration(seconds: 180), // 3 minutes timeout for audio processing
         onTimeout: () {
-          throw Exception(
-              'Audio processing timeout. Large files may take several minutes to process.');
+          throw Exception('Audio processing timeout. Large files may take several minutes to process.');
         },
       );
 
       final response = await http.Response.fromStream(streamedResponse);
 
-      print('Audio API Response Status: ${response.statusCode}');
-      print('Audio API Response Body: ${response.body}');
+      print('📥 [AUDIO] Response received:');
+      print('   Status: ${response.statusCode}');
+      print('   Headers: ${response.headers}');
+      print('   Body length: ${response.body.length} chars');
+      print('   Body preview: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}');
 
       if (response.statusCode == 200) {
-        final jsonData = json.decode(response.body);
-        return ProcessingResult.fromNewApiResponse(jsonData);
+        try {
+          final jsonData = json.decode(response.body);
+          print('✅ [AUDIO] Successfully parsed audio JSON response');
+          return ProcessingResult.fromNewApiResponse(jsonData);
+        } catch (e) {
+          print('❌ [AUDIO] JSON parsing failed: $e');
+          print('Raw response: ${response.body}');
+          throw Exception('Invalid JSON response from server: $e');
+        }
       } else if (response.statusCode == 413) {
-        throw Exception(
-            'Audio file is too large. Please use a smaller file (max 50MB).');
+        throw Exception('Audio file is too large. Please use a smaller file (max 50MB).');
       } else if (response.statusCode == 422) {
-        final errorData = json.decode(response.body);
-        throw Exception(
-            'Invalid audio format: ${errorData['detail'] ?? 'Unsupported audio file'}');
+        try {
+          final errorData = json.decode(response.body);
+          throw Exception('Invalid audio format: ${errorData['detail'] ?? 'Unsupported audio file'}');
+        } catch (e) {
+          throw Exception('Invalid audio format or server error');
+        }
       } else {
+        print('❌ [AUDIO] HTTP error: ${response.statusCode}');
         String errorMessage;
         try {
           final errorData = json.decode(response.body);
-          errorMessage = errorData['detail'] ?? 'Failed to process audio';
+          errorMessage = errorData['detail'] ?? errorData['message'] ?? 'Failed to process audio';
+          throw Exception('Server error: $errorMessage');
         } catch (e) {
           errorMessage = 'Server returned status ${response.statusCode}';
+          throw Exception('$errorMessage: ${response.body}');
         }
-        throw Exception(errorMessage);
       }
     } on TimeoutException {
-      throw Exception(
-          'Request timeout. Audio processing takes time for large files. Please try again.');
+      throw Exception('Request timeout. Audio processing takes time for large files. Please try again.');
     } catch (e) {
+      print('💥 [AUDIO] Processing error: $e');
       if (e.toString().contains('Connection reset by peer') ||
           e.toString().contains('Connection refused') ||
           e.toString().contains('Failed to fetch')) {
-        throw Exception(
-            'Unable to connect to audio processing server. Please check your internet connection and try again.');
+        throw Exception('Unable to connect to audio processing server. Check your internet connection.');
       }
 
       throw Exception('Audio processing error: ${e.toString()}');
@@ -779,6 +889,8 @@ class ApiService {
 
   static Future<bool> checkMediaApiHealth() async {
     try {
+      print('🏥 [HEALTH] Checking media API health: $mediaApiUrl/health');
+      
       final response = await http.get(
         Uri.parse('$mediaApiUrl/health'),
         headers: {
@@ -787,10 +899,12 @@ class ApiService {
         },
       ).timeout(Duration(seconds: 10));
 
-      print('Media API Health Check Status: ${response.statusCode}');
+      print('🏥 [HEALTH] Response: ${response.statusCode}');
+      print('🏥 [HEALTH] Body: ${response.body}');
+      
       return response.statusCode == 200;
     } catch (e) {
-      print('Media API Health Check Failed: $e');
+      print('❌ [HEALTH] Failed: $e');
       return false;
     }
   }

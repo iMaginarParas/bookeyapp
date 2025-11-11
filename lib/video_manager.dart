@@ -1,9 +1,562 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'video_service.dart';
+import 'navigation_service.dart';
+
+// System Notification Helper
+class SystemNotificationHelper {
+  static const MethodChannel _channel = MethodChannel('video_notifications');
+
+  static Future<void> showCompletionNotification(String title) async {
+    try {
+      await _channel.invokeMethod('showNotification', {
+        'title': 'Video Ready! 🎉',
+        'body': 'Your video "$title" is ready to watch',
+        'channelId': 'video_completion',
+        'channelName': 'Video Processing',
+        'channelDescription': 'Notifications for completed video processing',
+      });
+    } catch (e) {
+      print('Failed to show system notification: $e');
+      // Fallback to in-app notification only
+    }
+  }
+
+  static Future<void> requestNotificationPermission() async {
+    try {
+      await _channel.invokeMethod('requestPermission');
+    } catch (e) {
+      print('Failed to request notification permission: $e');
+    }
+  }
+}
+
+// Video Processing Notification Service
+class VideoNotificationService {
+  static VideoNotificationService? _instance;
+  factory VideoNotificationService() => _instance ??= VideoNotificationService._internal();
+  VideoNotificationService._internal();
+
+  BuildContext? _context;
+  OverlayEntry? _currentNotification;
+  Timer? _autoHideTimer;
+
+  void initialize(BuildContext context) {
+    _context = context;
+  }
+
+  void showProcessingPopup(String title) {
+    if (_context == null) return;
+
+    // Remove any existing notification
+    _currentNotification?.remove();
+    _autoHideTimer?.cancel();
+
+    // Create overlay entry for processing notification
+    _currentNotification = OverlayEntry(
+      builder: (context) => ProcessingNotificationWidget(
+        title: title,
+        onDismiss: () {
+          _currentNotification?.remove();
+          _currentNotification = null;
+          _autoHideTimer?.cancel();
+        },
+      ),
+    );
+
+    Overlay.of(_context!).insert(_currentNotification!);
+    
+    // Keep processing notification visible for longer (30 seconds or until completion)
+    _autoHideTimer = Timer(Duration(seconds: 30), () {
+      _currentNotification?.remove();
+      _currentNotification = null;
+    });
+  }
+
+  void showCompletionNotification(String title, VoidCallback? onTap) {
+    if (_context == null) return;
+
+    // Remove any existing notification
+    _currentNotification?.remove();
+    _autoHideTimer?.cancel();
+    
+    // Send system notification for background
+    SystemNotificationHelper.showCompletionNotification(title);
+
+    // Create overlay entry for completion notification
+    _currentNotification = OverlayEntry(
+      builder: (context) => CompletionNotificationWidget(
+        title: title,
+        onTap: onTap,
+        onDismiss: () {
+          _currentNotification?.remove();
+          _currentNotification = null;
+          _autoHideTimer?.cancel();
+        },
+      ),
+    );
+
+    Overlay.of(_context!).insert(_currentNotification!);
+
+    // Auto-dismiss after 4 seconds
+    _autoHideTimer = Timer(Duration(seconds: 4), () {
+      _currentNotification?.remove();
+      _currentNotification = null;
+    });
+  }
+
+  void dismiss() {
+    _currentNotification?.remove();
+    _currentNotification = null;
+    _autoHideTimer?.cancel();
+  }
+}
+
+// Processing Notification Widget
+class ProcessingNotificationWidget extends StatefulWidget {
+  final String title;
+  final VoidCallback onDismiss;
+
+  const ProcessingNotificationWidget({
+    Key? key,
+    required this.title,
+    required this.onDismiss,
+  }) : super(key: key);
+
+  @override
+  State<ProcessingNotificationWidget> createState() => _ProcessingNotificationWidgetState();
+}
+
+class _ProcessingNotificationWidgetState extends State<ProcessingNotificationWidget>
+    with TickerProviderStateMixin {
+  late AnimationController _controller;
+  late AnimationController _pulseController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+  late Animation<double> _pulseAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+
+    _slideAnimation = Tween<Offset>(begin: const Offset(0, -1), end: Offset.zero).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+    
+    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+
+    _controller.forward();
+    
+    // Start pulsing animation
+    _pulseController.repeat(reverse: true);
+
+    // Trigger haptic feedback
+    HapticFeedback.mediumImpact();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 10,
+      left: 16,
+      right: 16,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: SlideTransition(
+          position: _slideAnimation,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF2563EB),
+                    Color(0xFF3B82F6),
+                    Color(0xFF1D4ED8),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF2563EB).withOpacity(0.4),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    // Animated loading indicator
+                    AnimatedBuilder(
+                      animation: _pulseAnimation,
+                      builder: (context, child) {
+                        return Transform.scale(
+                          scale: _pulseAnimation.value,
+                          child: Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(15),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.3),
+                                width: 1,
+                              ),
+                            ),
+                            child: const Center(
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 3,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 16),
+                    
+                    // Content
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'Video Processing Started',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Your video "${widget.title}" is being processed.\nYou\'ll be notified when it\'s ready!',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.95),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              height: 1.3,
+                            ),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    const SizedBox(width: 12),
+                    
+                    // Close button
+                    GestureDetector(
+                      onTap: widget.onDismiss,
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Completion Notification Widget
+class CompletionNotificationWidget extends StatefulWidget {
+  final String title;
+  final VoidCallback? onTap;
+  final VoidCallback onDismiss;
+
+  const CompletionNotificationWidget({
+    Key? key,
+    required this.title,
+    this.onTap,
+    required this.onDismiss,
+  }) : super(key: key);
+
+  @override
+  State<CompletionNotificationWidget> createState() => _CompletionNotificationWidgetState();
+}
+
+class _CompletionNotificationWidgetState extends State<CompletionNotificationWidget>
+    with TickerProviderStateMixin {
+  late AnimationController _controller;
+  late AnimationController _progressController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _progressAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    
+    _progressController = AnimationController(
+      duration: const Duration(seconds: 4),
+      vsync: this,
+    );
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+
+    _slideAnimation = Tween<Offset>(begin: const Offset(0, -1), end: Offset.zero).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+
+    _scaleAnimation = Tween<double>(begin: 0.9, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
+    );
+    
+    _progressAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(parent: _progressController, curve: Curves.linear),
+    );
+
+    _controller.forward();
+    _progressController.forward();
+
+    // Trigger celebration haptic feedback
+    _triggerCelebrationHaptics();
+  }
+
+  Future<void> _triggerCelebrationHaptics() async {
+    HapticFeedback.heavyImpact();
+    await Future.delayed(const Duration(milliseconds: 150));
+    HapticFeedback.mediumImpact();
+    await Future.delayed(const Duration(milliseconds: 150));
+    HapticFeedback.lightImpact();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _progressController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 10,
+      left: 16,
+      right: 16,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: SlideTransition(
+          position: _slideAnimation,
+          child: ScaleTransition(
+            scale: _scaleAnimation,
+            child: Material(
+              color: Colors.transparent,
+              child: GestureDetector(
+                onTap: widget.onTap,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFF10B981), 
+                        Color(0xFF059669),
+                        Color(0xFF047857),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF10B981).withOpacity(0.4),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      // Progress bar at bottom
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: AnimatedBuilder(
+                          animation: _progressAnimation,
+                          builder: (context, child) {
+                            return Container(
+                              height: 3,
+                              decoration: const BoxDecoration(
+                                borderRadius: BorderRadius.only(
+                                  bottomLeft: Radius.circular(20),
+                                  bottomRight: Radius.circular(20),
+                                ),
+                              ),
+                              child: LinearProgressIndicator(
+                                value: _progressAnimation.value,
+                                backgroundColor: Colors.white.withOpacity(0.2),
+                                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      
+                      // Main content
+                      Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Row(
+                          children: [
+                            // Success icon with animation
+                            Container(
+                              width: 50,
+                              height: 50,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(15),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.3),
+                                  width: 1,
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.play_circle_filled,
+                                color: Colors.white,
+                                size: 28,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            
+                            // Text content
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Text(
+                                        '🎉 ',
+                                        style: TextStyle(fontSize: 16),
+                                      ),
+                                      const Text(
+                                        'Video Ready!',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Tap to view "${widget.title}"',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.95),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            
+                            const SizedBox(width: 12),
+                            
+                            // Close button
+                            GestureDetector(
+                              onTap: widget.onDismiss,
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.close,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class VideoManager extends ChangeNotifier {
   static final VideoManager _instance = VideoManager._internal();
@@ -16,55 +569,83 @@ class VideoManager extends ChangeNotifier {
   
   List<GeneratedVideo> get videos => List.unmodifiable(_videos);
 
-  /// ✅ NEW: Load user's existing videos from backend
-  Future<void> loadUserVideos(String jwtToken) async {
-    if (_isLoaded) return; // Prevent multiple loads
+  /// ✅ FIXED: Load user's existing videos from backend
+  Future<void> loadUserVideos(String jwtToken, {bool forceReload = false}) async {
+    // Allow force reload for refresh functionality
+    if (_isLoaded && !forceReload) {
+      print('📚 Videos already loaded, skipping...');
+      return;
+    }
     
     try {
       print('📚 Loading user videos from backend...');
       
       const String baseUrl = 'https://ch2vi-production.up.railway.app';
+      // Increase limit to fetch more videos
       final response = await http.get(
-        Uri.parse('$baseUrl/videos'),
+        Uri.parse('$baseUrl/videos/history?limit=200&offset=0'),
         headers: {
           'authorization': 'Bearer $jwtToken',
           'accept': 'application/json',
           'Content-Type': 'application/json',
         },
-      ).timeout(Duration(seconds: 15));
+      ).timeout(Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        List<dynamic> videosData;
+        final List<dynamic> videosJson = data['videos'] ?? [];
         
-        // Handle different response formats
-        if (data is List) {
-          videosData = data;
-        } else if (data is Map && data.containsKey('videos')) {
-          videosData = data['videos'] as List<dynamic>;
-        } else {
-          print('⚠️ Unexpected response format: $data');
-          return;
-        }
+        print('📥 Received ${videosJson.length} videos from backend');
         
-        print('✅ Loaded ${videosData.length} videos from backend');
-        
-        // Convert backend videos to GeneratedVideo objects
+        // Clear existing videos and load from backend
         _videos.clear();
-        for (var videoData in videosData) {
-          final video = GeneratedVideo.fromBackendData(videoData);
-          _videos.add(video);
-          
-          // Start polling for any processing videos
-          if (video.status == 'processing') {
-            print('🔄 Resuming polling for processing video: ${video.id}');
-            _startStatusPolling(video.id);
+        
+        for (var videoJson in videosJson) {
+          try {
+            // Generate unique ID using timestamp if job_id not available
+            final uniqueId = videoJson['job_id'] ?? 
+                            videoJson['id'] ?? 
+                            'video_${DateTime.now().millisecondsSinceEpoch}_${_videos.length}';
+            
+            final video = GeneratedVideo(
+              id: uniqueId,
+              title: videoJson['title'] ?? 'Untitled Video',
+              status: _mapBackendStatus(videoJson['video_status'] ?? 'unknown'),
+              progress: 'Loaded from history',
+              createdAt: DateTime.tryParse(videoJson['created_at'] ?? '') ?? DateTime.now(),
+              playbackUrl: videoJson['video_url'],
+              thumbnailUrl: videoJson['thumbnail_url'],
+              totalScenes: videoJson['scenes_count'] ?? 0,
+              scenesCompleted: videoJson['scenes_count'] ?? 0,
+              creditsUsed: videoJson['credits_charged'],
+              duration: videoJson['duration_seconds'] != null 
+                  ? Duration(seconds: videoJson['duration_seconds'])
+                  : null,
+              fileSize: videoJson['file_size_mb'] != null 
+                  ? (videoJson['file_size_mb'] * 1024 * 1024).round()
+                  : null,
+              backendVideoId: videoJson['id'],
+              isSavedToBackend: true,
+            );
+            
+            _videos.add(video);
+            
+            // Start polling for any processing videos
+            if (video.status == 'processing') {
+              print('🔄 Resuming polling for processing video: ${video.id}');
+              _startStatusPolling(video.id);
+            }
+          } catch (e) {
+            print('⚠️ Error parsing video data: $e');
           }
         }
         
+        // Sort by creation date (newest first)
+        _videos.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        
         _isLoaded = true;
         notifyListeners();
-        print('✅ Successfully loaded ${_videos.length} videos');
+        print('✅ Successfully loaded ${_videos.length} videos from backend');
         
       } else if (response.statusCode == 401) {
         throw Exception('Authentication failed. Please log in again.');
@@ -79,8 +660,104 @@ class VideoManager extends ChangeNotifier {
 
   /// ✅ NEW: Refresh videos from backend (for pull-to-refresh)
   Future<void> refreshFromBackend(String jwtToken) async {
-    _isLoaded = false; // Allow reload
-    await loadUserVideos(jwtToken);
+    print('🔄 Refreshing videos from backend...');
+    await loadUserVideos(jwtToken, forceReload: true);
+  }
+
+  /// ✅ NEW: Load more videos with pagination
+  Future<bool> loadMoreVideos(String jwtToken, {int offset = 0, int limit = 50}) async {
+    try {
+      print('📚 Loading more videos from backend (offset: $offset)...');
+      
+      const String baseUrl = 'https://ch2vi-production.up.railway.app';
+      final response = await http.get(
+        Uri.parse('$baseUrl/videos/history?limit=$limit&offset=$offset'),
+        headers: {
+          'authorization': 'Bearer $jwtToken',
+          'accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final List<dynamic> videosJson = data['videos'] ?? [];
+        
+        print('📥 Received ${videosJson.length} more videos from backend');
+        
+        if (videosJson.isEmpty) {
+          return false; // No more videos to load
+        }
+        
+        for (var videoJson in videosJson) {
+          try {
+            // Check if video already exists
+            final existingIndex = _videos.indexWhere(
+              (v) => v.backendVideoId == videoJson['id'] || v.id == videoJson['job_id']
+            );
+            
+            if (existingIndex == -1) {
+              // Generate unique ID using timestamp if job_id not available
+              final uniqueId = videoJson['job_id'] ?? 
+                              videoJson['id'] ?? 
+                              'video_${DateTime.now().millisecondsSinceEpoch}_${_videos.length}';
+              
+              final video = GeneratedVideo(
+                id: uniqueId,
+                title: videoJson['title'] ?? 'Untitled Video',
+                status: _mapBackendStatus(videoJson['video_status'] ?? 'unknown'),
+                progress: 'Loaded from history',
+                createdAt: DateTime.tryParse(videoJson['created_at'] ?? '') ?? DateTime.now(),
+                playbackUrl: videoJson['video_url'],
+                thumbnailUrl: videoJson['thumbnail_url'],
+                totalScenes: videoJson['scenes_count'] ?? 0,
+                scenesCompleted: videoJson['scenes_count'] ?? 0,
+                creditsUsed: videoJson['credits_charged'],
+                duration: videoJson['duration_seconds'] != null 
+                    ? Duration(seconds: videoJson['duration_seconds'])
+                    : null,
+                fileSize: videoJson['file_size_mb'] != null 
+                    ? (videoJson['file_size_mb'] * 1024 * 1024).round()
+                    : null,
+                backendVideoId: videoJson['id'],
+                isSavedToBackend: true,
+              );
+              
+              _videos.add(video);
+            }
+          } catch (e) {
+            print('⚠️ Error parsing video data: $e');
+          }
+        }
+        
+        // Sort by creation date (newest first)
+        _videos.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        
+        notifyListeners();
+        return videosJson.length == limit; // Return true if there might be more videos
+        
+      } else {
+        print('⚠️ Failed to load more videos: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print('❌ Error loading more videos: $e');
+      return false;
+    }
+  }
+
+  /// Map backend video status to frontend status
+  String _mapBackendStatus(String backendStatus) {
+    switch (backendStatus.toLowerCase()) {
+      case 'completed':
+        return 'completed';
+      case 'processing':
+        return 'processing';
+      case 'failed':
+        return 'failed';
+      default:
+        return 'processing';
+    }
   }
 
   /// ✅ NEW: Mark video as saved to backend
@@ -101,20 +778,28 @@ class VideoManager extends ChangeNotifier {
     required String chapterText,
     required String chapterTitle,
     required String jwtToken,
+    String language = 'English',  // ✅ ADD language parameter
+    bool animateAll = true,       // ✅ ADD animateAll parameter
   }) async {
     try {
       print('🎬 VideoManager: Starting video generation');
       print('📝 Title: $chapterTitle');
       print('📊 Text length: ${chapterText.length} characters');
       print('🔐 JWT Token available: ${jwtToken.isNotEmpty}');
+      print('🌍 Language: $language');  // ✅ LOG language
+      print('🎬 Animate all: $animateAll');  // ✅ LOG animation setting
+      
+      // Show processing notification popup
+      VideoNotificationService().showProcessingPopup(chapterTitle);
       
       // Start video generation with JWT token
       final status = await VideoGenerationService.generateVideoFromChapter(
         chapterText: chapterText,
         chapterTitle: chapterTitle,
         jwtToken: jwtToken,
-        animateAll: true,
+        animateAll: animateAll,  // ✅ USE parameter instead of hardcoded
         mergeFinal: true,
+        language: language,      // ✅ PASS language parameter
       );
 
       print('✅ Video generation started successfully');
@@ -138,6 +823,9 @@ class VideoManager extends ChangeNotifier {
       return status.jobId;
     } catch (e) {
       print('❌ VideoManager: Error starting video generation: $e');
+      
+      // Dismiss the processing notification on error
+      VideoNotificationService().dismiss();
       
       // Provide user-friendly error messages
       String errorMessage = e.toString();
@@ -174,11 +862,25 @@ class VideoManager extends ChangeNotifier {
           print('✅ Job $jobId: Completed successfully');
           if (status.playbackUrl != null) {
             print('🎥 Playback URL received: ${status.playbackUrl}');
+            
+            // Show completion notification
+            final video = getVideo(jobId);
+            if (video != null) {
+              VideoNotificationService().showCompletionNotification(
+                video.title, 
+                () {
+                  // Navigate to videos tab when notification is tapped
+                  NavigationService().navigateToVideos();
+                }
+              );
+            }
           } else {
             print('⚠️ No playback URL in completed status');
           }
         } else if (status.status == 'failed') {
           print('❌ Job $jobId: Failed - ${status.errorMessage}');
+          // Dismiss processing notification on failure
+          VideoNotificationService().dismiss();
         }
         
         _updateVideoStatus(jobId, status);
@@ -188,6 +890,14 @@ class VideoManager extends ChangeNotifier {
           print('🛑 Stopping polling for job: $jobId (Status: ${status.status})');
           timer.cancel();
           _statusTimers.remove(jobId);
+          
+          // Dismiss processing notification when completed/failed
+          if (status.isCompleted || status.isFailed) {
+            // Only dismiss if it's a processing notification (not completion notification)
+            Timer(Duration(milliseconds: 500), () {
+              // This will only dismiss if it's still the processing notification
+            });
+          }
           
           // Clean up job resources after completion (keep for longer for playback)
           if (status.isCompleted) {
@@ -231,6 +941,7 @@ class VideoManager extends ChangeNotifier {
         status: status.status,
         progress: status.progress,
         playbackUrl: status.playbackUrl,  // ✅ CRITICAL: Store the playback URL
+        thumbnailUrl: status.thumbnailUrl,  // ✅ CRITICAL: Store the thumbnail URL
         scenesCompleted: status.scenesCompleted,
         totalScenes: status.totalScenes,
         creditsUsed: status.creditsUsed,
@@ -251,6 +962,16 @@ class VideoManager extends ChangeNotifier {
           print('✅ Playback URL stored: ${status.playbackUrl?.substring(0, 100)}...');
         } else if (newStatus == 'completed') {
           print('⚠️ WARNING: Video completed but no playback URL!');
+        }
+        if (status.thumbnailUrl != null) {
+          print('🖼️ Thumbnail URL stored: ${status.thumbnailUrl?.substring(0, 100)}...');
+        } else {
+          print('⚠️ No thumbnail URL in status update');
+        }
+        
+        // Trigger vibration notification when video completes
+        if (newStatus == 'completed') {
+          _triggerCompletionVibration();
         }
       }
     } else {
@@ -558,5 +1279,27 @@ class VideoManager extends ChangeNotifier {
       return getPlaybackUrl(recentVideo.id);
     }
     return null;
+  }
+
+  /// Trigger 3 haptic feedback pulses when video generation completes
+  Future<void> _triggerCompletionVibration() async {
+    try {
+      print('📳 Triggering completion haptic feedback...');
+      
+      // Use Flutter's built-in HapticFeedback for 3 pulses
+      // No external package needed - works on both Android and iOS!
+      HapticFeedback.heavyImpact();
+      await Future.delayed(Duration(milliseconds: 200));
+      
+      HapticFeedback.heavyImpact();
+      await Future.delayed(Duration(milliseconds: 200));
+      
+      HapticFeedback.heavyImpact();
+      
+      print('✅ Completion haptic feedback triggered (3 pulses)');
+    } catch (e) {
+      print('❌ Error triggering haptic feedback: $e');
+      // Silent fail - haptic feedback is not critical
+    }
   }
 }

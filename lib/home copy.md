@@ -72,7 +72,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
 
-  int _selectedTabIndex = 0; // 0=Story Maker, 1=Ebook
+  int _selectedTabIndex = 0; // 0=Story Maker, 1=Audio Book, 2=Images, 3=Ebook
   
   // Banner carousel variables
   int _currentBannerIndex = 0;
@@ -473,7 +473,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                         children: [
                           _buildTabButton('Story Maker', Icons.auto_stories, 0),
                           const SizedBox(width: 8),
-                          _buildTabButton('Ebook', Icons.menu_book, 1),
+                          _buildTabButton('Audio Book', Icons.headphones, 1),
+                          const SizedBox(width: 8),
+                          _buildTabButton('Images', Icons.image, 2),
+                          const SizedBox(width: 8),
+                          _buildTabButton('Ebook', Icons.menu_book, 3),
                         ],
                       ),
                     ),
@@ -652,7 +656,17 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           key: const ValueKey('story_generator'),
           onStoryGenerated: _handleContentProcessed,
         );
-      case 1: // Ebook Upload
+      case 1: // Audio Book
+        return CompactAudioUploadWidget(
+          key: const ValueKey('audio_upload'),
+          onAudioProcessed: _handleContentProcessed,
+        );
+      case 2: // Images/OCR
+        return CompactCameraWidget(
+          key: const ValueKey('image_upload'),
+          onImagesProcessed: _handleContentProcessed,
+        );
+      case 3: // Ebook Upload
         return _buildCompactPdfTab();
       default:
         return _buildCompactPdfTab();

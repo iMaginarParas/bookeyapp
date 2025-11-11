@@ -853,6 +853,7 @@ class ProcessingPageState extends State<ProcessingPage>
                     child: DropdownButton<String>(
                       value: selectedLanguage,
                       isExpanded: true,
+                      dropdownColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       borderRadius: BorderRadius.circular(12),
                       icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF2563EB)),
@@ -1051,6 +1052,32 @@ class ProcessingPageState extends State<ProcessingPage>
                     child: ElevatedButton.icon(
                       onPressed: () {
                         Navigator.of(context).pop();
+                        // Provide immediate feedback before starting video creation
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: const Row(
+                              children: [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Text('Initializing video generation...'),
+                              ],
+                            ),
+                            backgroundColor: const Color(0xFF2563EB),
+                            behavior: SnackBarBehavior.floating,
+                            margin: const EdgeInsets.all(16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                        
+                        // Start the actual video creation
                         _createVideoFromPageBatch(
                           batch, 
                           animateAll: animateAll,
@@ -1276,11 +1303,6 @@ class ProcessingPageState extends State<ProcessingPage>
             'API server is not responding. Please check your internet connection.');
       }
 
-      _showSnackBar(
-        'Starting video generation in $language${animateAll ? ' with full animation' : ''}...',
-        isError: false,
-      );
-
       final batchText = batch.displayText;
 
       print('Page batch text length: ${batchText.length}');
@@ -1288,32 +1310,17 @@ class ProcessingPageState extends State<ProcessingPage>
       print('Animate all: $animateAll');
       print('Language: $language');
 
+      // Start video generation - this will show the processing notification
       final jobId = await _videoManager.generateVideoFromChapter(
         chapterText: batchText,
         chapterTitle: batch.displayTitle,
         jwtToken: jwtToken,
+        language: language,  // Pass the language parameter
+        animateAll: animateAll,  // Pass the animateAll parameter
       );
 
       print('Job started with ID: $jobId');
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Video generation started in $language${animateAll ? ' with full animation' : ''}! Check the Videos tab.',
-          ),
-          backgroundColor: const Color(0xFF10B981),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.all(16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          action: SnackBarAction(
-            label: 'View',
-            textColor: Colors.white,
-            onPressed: () {
-              _navigateToVideosTab();
-            },
-          ),
-        ),
-      );
     } catch (e) {
       print('Error creating video: $e');
 
