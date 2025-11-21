@@ -23,7 +23,7 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _contentFadeAnimation;
   late Animation<double> _contentSlideAnimation;
 
-  // Auth related variables
+  // ✅ CORRECT: Using the exact same base URL
   final String baseUrl = 'https://bokauth-production.up.railway.app';
   final TextEditingController _identifierController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
@@ -41,7 +41,7 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
     
-    // Simpler animation controllers
+    // Animation controllers
     _logoController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
@@ -52,7 +52,7 @@ class _SplashScreenState extends State<SplashScreen>
       vsync: this,
     );
 
-    // Simpler logo animations
+    // Logo animations
     _logoFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _logoController, curve: Curves.easeOut),
     );
@@ -83,11 +83,11 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _startApp() async {
-    // Start logo animation and spinner
-    _logoController.repeat(); // Make it loop for spinner
+    // Start logo animation
+    _logoController.forward();
     
-    // Wait for logo animation
-    await Future.delayed(const Duration(milliseconds: 800));
+    // Wait for animation
+    await Future.delayed(const Duration(milliseconds: 2000));
     
     // Check authentication
     await _checkAuthStatus();
@@ -98,20 +98,28 @@ class _SplashScreenState extends State<SplashScreen>
       final prefs = await SharedPreferences.getInstance();
       final accessToken = prefs.getString('access_token');
       final refreshToken = prefs.getString('refresh_token');
+      final isGuestMode = prefs.getBool('is_guest_mode') ?? false;
+      
+      // If in guest mode, go straight to main screen
+      if (isGuestMode) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) _navigateToMainScreen();
+        return;
+      }
       
       if (accessToken != null && refreshToken != null) {
         // Try to validate token
         final isValid = await _validateAccessToken(accessToken);
         
         if (isValid) {
-          await Future.delayed(const Duration(milliseconds: 1000));
+          await Future.delayed(const Duration(milliseconds: 500));
           if (mounted) _navigateToMainScreen();
           return;
         } else {
           // Try refresh
           final refreshed = await _refreshAccessToken(refreshToken);
           if (refreshed) {
-            await Future.delayed(const Duration(milliseconds: 1000));
+            await Future.delayed(const Duration(milliseconds: 500));
             if (mounted) _navigateToMainScreen();
             return;
           }
@@ -132,6 +140,46 @@ class _SplashScreenState extends State<SplashScreen>
       _showAuthForm = true;
     });
     _contentController.forward();
+  }
+
+  // ✅ Guest mode functionality
+  Future<void> _continueAsGuest() async {
+    _lightHaptic();
+    
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _successMessage = null;
+    });
+    
+    try {
+      // Set guest mode flag
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('is_guest_mode', true);
+      
+      setState(() {
+        _successMessage = 'Entering guest mode...';
+      });
+      
+      await Future.delayed(const Duration(milliseconds: 1000));
+      
+      if (mounted) {
+        _navigateToMainScreen();
+      }
+    } catch (e) {
+      print('Guest mode error: $e');
+      setState(() {
+        _errorMessage = 'Failed to enter guest mode. Please try again.';
+        _successMessage = null;
+      });
+      _mediumHaptic();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   Future<bool> _validateAccessToken(String accessToken) async {
@@ -198,6 +246,12 @@ class _SplashScreenState extends State<SplashScreen>
     HapticFeedback.mediumImpact();
   }
 
+  // ✅ Dismiss keyboard function
+  void _dismissKeyboard() {
+    FocusScope.of(context).unfocus();
+  }
+
+  // ✅ FIXED: Using the exact same format as your working curl command
   Future<void> _sendOtp() async {
     final identifier = _identifierController.text.trim();
     
@@ -237,25 +291,26 @@ class _SplashScreenState extends State<SplashScreen>
         _currentIdentifier = identifier;
       });
 
-      // CORRECT ENDPOINTS
+      // ✅ EXACTLY MATCHING YOUR WORKING CURL COMMAND
       final endpoint = isEmail ? '/auth/email/signin' : '/auth/phone/signin';
       final requestBody = isEmail 
           ? {'email': identifier}
           : {'phone': identifier};
       
       print('🚀 Sending OTP to: $identifier via $endpoint');
+      print('📦 Request body: ${json.encode(requestBody)}');
       
       final response = await http.post(
         Uri.parse('$baseUrl$endpoint'),
         headers: {
+          'accept': 'application/json',
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
         },
         body: json.encode(requestBody),
       ).timeout(const Duration(seconds: 30));
 
       print('📱 OTP Response: ${response.statusCode}');
-      print('📱 OTP Body: ${response.body}');
+      print('📄 Response body: ${response.body}');
 
       final responseData = json.decode(response.body);
 
@@ -268,7 +323,7 @@ class _SplashScreenState extends State<SplashScreen>
         _lightHaptic();
       } else {
         setState(() {
-          _errorMessage = responseData['detail'] ?? 'Failed to send OTP. Please try again.';
+          _errorMessage = responseData['detail'] ?? responseData['message'] ?? 'Failed to send OTP. Please try again.';
           _successMessage = null;
         });
         _mediumHaptic();
@@ -279,29 +334,21 @@ class _SplashScreenState extends State<SplashScreen>
         _successMessage = null;
       });
       _mediumHaptic();
-      print('❌ OTP send error: $e');
+      print('🔥 OTP Error: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
-
-    setState(() {
-      _isLoading = false;
-    });
   }
 
+  // ✅ FIXED: Now using the EXACT format from your working curl command!
   Future<void> _verifyOtp() async {
     final otp = _otpController.text.trim();
     
-    if (otp.isEmpty) {
+    if (otp.isEmpty || otp.length != 6) {
       setState(() {
-        _errorMessage = 'Please enter the OTP';
-        _successMessage = null;
-      });
-      _mediumHaptic();
-      return;
-    }
-
-    if (_currentIdentifier == null) {
-      setState(() {
-        _errorMessage = 'Session expired. Please start again.';
+        _errorMessage = 'Please enter a valid 6-digit code';
         _successMessage = null;
       });
       _mediumHaptic();
@@ -316,60 +363,83 @@ class _SplashScreenState extends State<SplashScreen>
     });
 
     try {
-      // CORRECT REQUEST BODY FORMAT FROM API DOCS
-      Map<String, dynamic> requestBody = {
-        'token': otp,
+      // ✅ USING THE EXACT SAME ENDPOINT AND FORMAT AS YOUR WORKING CURL
+      final endpoint = '/auth/verify-otp';
+      
+      // ✅ EXACT FORMAT FROM YOUR WORKING CURL COMMAND:
+      // {"email": "test@sobookey.in", "phone": "string", "token": "123456"}
+      final requestBody = {
+        'email': _isPhoneAuth ? null : _currentIdentifier!,
+        'phone': _isPhoneAuth ? _currentIdentifier! : null,
+        'token': otp,  // Using 'token' field like your curl command
       };
 
-      if (_isPhoneAuth) {
-        requestBody['phone'] = _currentIdentifier;
-      } else {
-        requestBody['email'] = _currentIdentifier;
-      }
+      // Remove null values to clean up the request
+      requestBody.removeWhere((key, value) => value == null);
       
-      // CORRECT ENDPOINT FROM API DOCS
-      const endpoint = '/auth/verify-otp';
-      
-      print('🔐 Verifying OTP: $otp via $endpoint');
+      print('🔐 Verifying OTP for: $_currentIdentifier via $endpoint');
+      print('📦 Request body: ${json.encode(requestBody)}');
       
       final response = await http.post(
         Uri.parse('$baseUrl$endpoint'),
         headers: {
+          'accept': 'application/json',
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
         },
         body: json.encode(requestBody),
       ).timeout(const Duration(seconds: 30));
 
       print('✅ Verify Response: ${response.statusCode}');
-      print('✅ Verify Body: ${response.body}');
+      print('📄 Response body: ${response.body}');
 
       final responseData = json.decode(response.body);
 
       if (response.statusCode == 200) {
-        // Store tokens
+        // Store tokens and user data - matching your curl response format
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('access_token', responseData['access_token']);
-        await prefs.setString('refresh_token', responseData['refresh_token']);
         
-        if (responseData['user'] != null) {
-          await prefs.setString('user_data', json.encode(responseData['user']));
+        if (responseData['access_token'] != null) {
+          await prefs.setString('access_token', responseData['access_token']);
         }
-
-        _lightHaptic();
+        
+        if (responseData['refresh_token'] != null) {
+          await prefs.setString('refresh_token', responseData['refresh_token']);
+        }
+        
+        // Store additional user data from response
+        final userData = {
+          'user_id': responseData['user_id'],
+          'email': responseData['email'],
+          'phone': responseData['phone'],
+        };
+        await prefs.setString('user_data', json.encode(userData));
+        
+        // Clear guest mode flag if it was set
+        await prefs.remove('is_guest_mode');
         
         setState(() {
-          _successMessage = 'Login successful!';
+          _successMessage = responseData['message'] ?? 'Login successful!';
           _errorMessage = null;
         });
-
-        await Future.delayed(const Duration(milliseconds: 800));
+        
+        _lightHaptic();
+        await Future.delayed(const Duration(milliseconds: 1000));
+        
         if (mounted) {
+          // Initialize user data after successful login
+          try {
+            if (responseData['access_token'] != null) {
+              await initializeUserData(responseData['access_token']);
+            }
+          } catch (e) {
+            print('User data initialization error: $e');
+            // Don't block login for this error
+          }
           _navigateToMainScreen();
         }
       } else {
         setState(() {
-          _errorMessage = responseData['detail'] ?? 'Invalid OTP. Please try again.';
+          _errorMessage = responseData['detail'] ?? responseData['message'] ?? 'Invalid verification code. Please try again.';
           _successMessage = null;
         });
         _mediumHaptic();
@@ -380,16 +450,15 @@ class _SplashScreenState extends State<SplashScreen>
         _successMessage = null;
       });
       _mediumHaptic();
-      print('❌ OTP verify error: $e');
+      print('🔥 Verification Error: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
-
-    setState(() {
-      _isLoading = false;
-    });
   }
 
   void _goBack() {
-    _lightHaptic();
     setState(() {
       _showOtpInput = false;
       _errorMessage = null;
@@ -400,326 +469,195 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC), // Much brighter background
-      body: SafeArea(
-        child: _isInitializing || !_showAuthForm
-            ? _buildSplashContent() 
-            : _buildAuthContent(),
-      ),
-    );
-  }
-
-  Widget _buildSplashContent() {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFF8FAFC), // Light gray-blue
-            Color(0xFFE2E8F0), // Slightly darker gray-blue
-            Color(0xFFCBD5E1), // Even more gradient depth
-          ],
-          stops: [0.0, 0.6, 1.0],
-        ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // LOGO FROM ASSETS with animation
-          AnimatedBuilder(
-            animation: _logoController,
-            builder: (context, child) {
-              return Transform.scale(
-                scale: _logoScaleAnimation.value,
-                child: Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(30),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF8B5CF6).withOpacity(0.3),
-                        blurRadius: 25,
-                        spreadRadius: 5,
-                        offset: const Offset(0, 10),
-                      ),
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.8),
-                        blurRadius: 15,
-                        spreadRadius: -5,
-                        offset: const Offset(0, -5),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(30),
-                    child: Image.asset(
-                      'assets/logo.png',
-                      width: 120,
-                      height: 120,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        // Fallback if asset not found
-                        return Container(
-                          width: 120,
-                          height: 120,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF8B5CF6), Color(0xFFA855F7)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          child: const Center(
-                            child: Text(
-                              'B',
-                              style: TextStyle(
-                                fontSize: 48,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                                letterSpacing: 2,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          
-          const SizedBox(height: 32),
-          
-          // Brand name with animation
-          AnimatedBuilder(
-            animation: _logoController,
-            builder: (context, child) {
-              return FadeTransition(
-                opacity: _logoFadeAnimation,
-                child: ShaderMask(
-                  shaderCallback: (bounds) => const LinearGradient(
-                    colors: [Color(0xFF8B5CF6), Color(0xFFA855F7)],
-                  ).createShader(bounds),
-                  child: const Text(
-                    'Bookey',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          
-          const SizedBox(height: 12),
-          
-          // Tagline with animation
-          AnimatedBuilder(
-            animation: _logoController,
-            builder: (context, child) {
-              return FadeTransition(
-                opacity: _logoFadeAnimation,
-                child: const Text(
-                  'Transform stories into videos',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Color(0xFF64748B),
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              );
-            },
-          ),
-          
-          const SizedBox(height: 50),
-          
-          // BEAUTIFUL SPINNER LOADING with animation
-          if (_isInitializing)
-            Column(
-              children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  child: Stack(
+    return GestureDetector(
+      onTap: _dismissKeyboard, // ✅ Tap anywhere to dismiss keyboard
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        resizeToAvoidBottomInset: true, // ✅ Handle keyboard properly
+        body: SafeArea(
+          child: SingleChildScrollView( // ✅ Prevent overflow with scrolling
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, // ✅ Dismiss on scroll
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: MediaQuery.of(context).size.height - MediaQuery.of(context).padding.top - MediaQuery.of(context).padding.bottom,
+              ),
+              child: IntrinsicHeight(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
                     children: [
-                      // Background circle
-                      Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withOpacity(0.3),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (_isInitializing) ...[
+                              _buildLogo(),
+                              const SizedBox(height: 24),
+                              const Text(
+                                'Loading...',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ] else if (_showAuthForm) ...[
+                              AnimatedBuilder(
+                                animation: _contentFadeAnimation,
+                                builder: (context, child) {
+                                  return Opacity(
+                                    opacity: _contentFadeAnimation.value,
+                                    child: Transform.translate(
+                                      offset: Offset(0, _contentSlideAnimation.value),
+                                      child: Column(
+                                        children: [
+                                          _buildHeader(),
+                                          const SizedBox(height: 32),
+                                          _buildAuthForm(),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ],
                         ),
                       ),
-                      // Animated spinner
-                      AnimatedBuilder(
-                        animation: _logoController,
-                        builder: (context, child) {
-                          return Transform.rotate(
-                            angle: _logoController.value * 6.28, // 2π for full rotation
-                            child: Container(
-                              width: 50,
-                              height: 50,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: SweepGradient(
-                                  colors: [
-                                    Colors.transparent,
-                                    const Color(0xFF8B5CF6).withOpacity(0.8),
-                                    const Color(0xFFA855F7),
-                                    Colors.transparent,
-                                  ],
-                                  stops: [0.0, 0.3, 0.7, 1.0],
-                                ),
-                              ),
-                              child: Container(
-                                margin: const EdgeInsets.all(8),
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Color(0xFFF8FAFC),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
+                      _buildFooter(),
                     ],
                   ),
-                ),
-                const SizedBox(height: 16),
-                AnimatedBuilder(
-                  animation: _logoController,
-                  builder: (context, child) {
-                    return FadeTransition(
-                      opacity: _logoFadeAnimation,
-                      child: Text(
-                        'Loading...',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: const Color(0xFF8B5CF6),
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAuthContent() {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFFF8FAFC),
-            Color(0xFFE2E8F0),
-          ],
-        ),
-      ),
-      child: AnimatedBuilder(
-        animation: _contentController,
-        builder: (context, child) {
-          return FadeTransition(
-            opacity: _contentFadeAnimation,
-            child: Transform.translate(
-              offset: Offset(0, _contentSlideAnimation.value),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 60),
-                    _buildHeader(),
-                    const SizedBox(height: 40),
-                    _buildAuthForm(),
-                    const SizedBox(height: 24),
-                    _buildFooter(),
-                  ],
                 ),
               ),
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
+  }
+
+  Widget _buildLogo() {
+    return AnimatedBuilder(
+      animation: _logoController,
+      builder: (context, child) {
+        return FadeTransition(
+          opacity: _logoFadeAnimation,
+          child: ScaleTransition(
+            scale: _logoScaleAnimation,
+            child: Container(
+              width: 140,
+              height: 140,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF8B5CF6), Color(0xFFA855F7)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                    blurRadius: 25,
+                    spreadRadius: 0,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: ClipOval(
+                child: FutureBuilder<bool>(
+                  future: _checkAssetExists('assets/logo.png'),
+                  builder: (context, snapshot) {
+                    final assetExists = snapshot.data ?? false;
+                    
+                    if (assetExists) {
+                      return Image.asset(
+                        'assets/logo.png',
+                        width: 140,
+                        height: 140,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return _buildFallbackLogo();
+                        },
+                      );
+                    } else {
+                      return _buildFallbackLogo();
+                    }
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFallbackLogo() {
+    return Container(
+      width: 140,
+      height: 140,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF8B5CF6), Color(0xFFA855F7)],
+        ),
+      ),
+      child: const Center(
+        child: Text(
+          'B',
+          style: TextStyle(
+            fontSize: 48,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            letterSpacing: 2,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _checkAssetExists(String assetPath) async {
+    try {
+      await rootBundle.load(assetPath);
+      return true;
+    } catch (e) {
+      print('Asset not found: $assetPath');
+      return false;
+    }
   }
 
   Widget _buildHeader() {
     return Column(
       children: [
-        // Logo from assets - smaller version for login
         Container(
-          width: 80,
-          height: 80,
+          width: 100,
+          height: 100,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF8B5CF6), Color(0xFFA855F7)],
+            ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF8B5CF6).withOpacity(0.2),
+                color: const Color(0xFF8B5CF6).withOpacity(0.3),
                 blurRadius: 20,
-                spreadRadius: 2,
+                spreadRadius: 0,
                 offset: const Offset(0, 8),
-              ),
-              BoxShadow(
-                color: Colors.white.withOpacity(0.9),
-                blurRadius: 10,
-                spreadRadius: -2,
-                offset: const Offset(0, -4),
               ),
             ],
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: Image.asset(
-              'assets/logo.png',
-              width: 80,
-              height: 80,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                // Fallback if asset not found
-                return Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF8B5CF6), Color(0xFFA855F7)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: const Center(
-                    child: Text(
-                      'B',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ),
-                );
-              },
+          child: const Center(
+            child: Text(
+              'B',
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+                letterSpacing: 1,
+              ),
             ),
           ),
         ),
@@ -789,6 +727,44 @@ class _SplashScreenState extends State<SplashScreen>
               onPressed: _sendOtp,
               isLoading: _isLoading,
             ),
+            
+            const SizedBox(height: 16),
+            const Row(
+              children: [
+                Expanded(child: Divider(color: Color(0xFFE5E7EB))),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    'or',
+                    style: TextStyle(
+                      color: Color(0xFF9CA3AF),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                Expanded(child: Divider(color: Color(0xFFE5E7EB))),
+              ],
+            ),
+            const SizedBox(height: 16),
+            
+            _buildSecondaryButton(
+              text: '🎭 Try Without Account',
+              onPressed: _continueAsGuest,
+              isLoading: _isLoading,
+            ),
+            
+            const SizedBox(height: 8),
+            const Text(
+              'Limited features available in guest mode',
+              style: TextStyle(
+                fontSize: 12,
+                color: Color(0xFF9CA3AF),
+                fontStyle: FontStyle.italic,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            
           ] else ...[
             _buildTextField(
               controller: _otpController,
@@ -812,7 +788,6 @@ class _SplashScreenState extends State<SplashScreen>
           
           const SizedBox(height: 16),
           
-          // Messages
           if (_errorMessage != null) _buildMessage(_errorMessage!, false),
           if (_successMessage != null) _buildMessage(_successMessage!, true),
         ],
@@ -914,6 +889,7 @@ class _SplashScreenState extends State<SplashScreen>
   Widget _buildSecondaryButton({
     required String text,
     required VoidCallback onPressed,
+    bool isLoading = false,
   }) {
     return Container(
       height: 52,
@@ -922,20 +898,29 @@ class _SplashScreenState extends State<SplashScreen>
         borderRadius: BorderRadius.circular(12),
       ),
       child: TextButton(
-        onPressed: onPressed,
+        onPressed: isLoading ? null : onPressed,
         style: TextButton.styleFrom(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
         ),
-        child: Text(
-          text,
-          style: const TextStyle(
-            color: Color(0xFF6B7280),
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        child: isLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6B7280)),
+                ),
+              )
+            : Text(
+                text,
+                style: const TextStyle(
+                  color: Color(0xFF6B7280),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
       ),
     );
   }
@@ -969,25 +954,28 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Widget _buildFooter() {
-    return Column(
-      children: [
-        const Text(
-          'By continuing, you agree to our Terms of Service and Privacy Policy',
-          style: TextStyle(
-            fontSize: 12,
-            color: Color(0xFF9CA3AF),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24, top: 16), // ✅ Added consistent padding
+      child: Column(
+        children: [
+          const Text(
+            'By continuing, you agree to our Terms of Service and Privacy Policy',
+            style: TextStyle(
+              fontSize: 12,
+              color: Color(0xFF9CA3AF),
+            ),
+            textAlign: TextAlign.center,
           ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 24),
-        const Text(
-          '© 2024 Bookey. All rights reserved.',
-          style: TextStyle(
-            fontSize: 12,
-            color: Color(0xFFCBD5E1),
+          const SizedBox(height: 16), // ✅ Reduced from 24 to prevent overflow
+          const Text(
+            '© 2024 Bookey. All rights reserved.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Color(0xFFCBD5E1),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
