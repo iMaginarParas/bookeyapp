@@ -486,7 +486,6 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
         'Premium AI processing',
         'Priority support',
         'Advanced features',
-        'No ads'
       ],
       isPopular: true,
       revenueCatProductId: 'bookey_pro_yearly',
