@@ -762,29 +762,19 @@ class _ProfilePageState extends State<ProfilePage>
                         icon: Icons.privacy_tip,
                         title: 'Privacy Policy',
                         subtitle: 'View our privacy policy',
-                        onTap: () async {
-                          final uri = Uri.parse('https://bookey.in/privacy');
-                          if (await canLaunchUrl(uri)) {
-                            await launchUrl(uri,
-                                mode: LaunchMode.externalApplication);
-                          }
-                        },
+                        onTap: () =>
+                            _openLegalLink('https://bookey.in/privacy'),
                       ),
 
                       const SizedBox(height: 12),
 
-                      // Terms of Service
+                      // ✅ REQUIRED: Terms of Use (EULA) - Apple Standard EULA (Apple Guideline 3.1.2)
                       _buildMenuOption(
                         icon: Icons.article,
-                        title: 'Terms of Service',
-                        subtitle: 'View our terms of service',
-                        onTap: () async {
-                          final uri = Uri.parse('https://bookey.in/terms');
-                          if (await canLaunchUrl(uri)) {
-                            await launchUrl(uri,
-                                mode: LaunchMode.externalApplication);
-                          }
-                        },
+                        title: 'Terms of Use (EULA)',
+                        subtitle: 'View terms and conditions',
+                        onTap: () => _openLegalLink(
+                            'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/'),
                       ),
 
                       const SizedBox(height: 12),
@@ -959,6 +949,32 @@ class _ProfilePageState extends State<ProfilePage>
         ),
       ),
     );
+  }
+
+  // ✅ REQUIRED: Functional link to open legal documents (Apple Guideline 3.1.2)
+  Future<void> _openLegalLink(String url) async {
+    HapticService.lightImpact();
+    try {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open link: $url'),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error opening legal link: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to open link. Please visit: $url'),
+          backgroundColor: const Color(0xFFEF4444),
+        ),
+      );
+    }
   }
 
   void _showComingSoonDialog(String feature) {
