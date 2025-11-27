@@ -27,12 +27,16 @@ class _SplashScreenState extends State<SplashScreen>
   final String baseUrl = 'https://bokauth-production.up.railway.app';
   final TextEditingController _identifierController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController(); // ✅ NEW: Password controller
   
   bool _isInitializing = true;
   bool _showAuthForm = false;
   bool _isLoading = false;
   bool _showOtpInput = false;
+  bool _showPasswordOption = false; // ✅ NEW: Show password login option
+  bool _usePasswordAuth = false; // ✅ NEW: Use password instead of OTP
   bool _isPhoneAuth = false;
+  bool _obscurePassword = true; // ✅ NEW: Hide/show password
   String? _errorMessage;
   String? _successMessage;
   String? _currentIdentifier;
@@ -79,6 +83,7 @@ class _SplashScreenState extends State<SplashScreen>
     _contentController.dispose();
     _identifierController.dispose();
     _otpController.dispose();
+    _passwordController.dispose(); // ✅ NEW: Dispose password controller
     super.dispose();
   }
 
@@ -202,7 +207,7 @@ class _SplashScreenState extends State<SplashScreen>
   Future<bool> _refreshAccessToken(String refreshToken) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/refresh-token'),
+        Uri.parse('$baseUrl/auth/refresh'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'refresh_token': refreshToken}),
       ).timeout(const Duration(seconds: 8));
@@ -251,8 +256,8 @@ class _SplashScreenState extends State<SplashScreen>
     FocusScope.of(context).unfocus();
   }
 
-  // ✅ FIXED: Using the exact same format as your working curl command
-  Future<void> _sendOtp() async {
+  // ✅ NEW: Continue with email/password authentication
+  Future<void> _continueWithCredentials() async {
     final identifier = _identifierController.text.trim();
     
     if (identifier.isEmpty) {
@@ -264,27 +269,52 @@ class _SplashScreenState extends State<SplashScreen>
       return;
     }
 
+    // Check if it's email (phone auth doesn't support password)
+    final isEmail = identifier.contains('@');
+    
+    if (!isEmail) {
+      // Phone numbers must use OTP
+      await _sendOtp();
+      return;
+    }
+    
+    setState(() {
+      _currentIdentifier = identifier;
+      _isPhoneAuth = false;
+      _showPasswordOption = true; // Show password option for email
+    });
+  }
+
+  // ✅ NEW: Choose authentication method
+  void _chooseAuthMethod(bool usePassword) {
+    setState(() {
+      _usePasswordAuth = usePassword;
+      if (usePassword) {
+        // Skip OTP, go straight to password
+        _showOtpInput = true;
+      } else {
+        // Send OTP first
+        _sendOtp();
+      }
+    });
+  }
+
+  // ✅ FIXED: Using the exact same format as your working curl command
+  Future<void> _sendOtp() async {
+    final identifier = _currentIdentifier ?? _identifierController.text.trim();
+    
     _lightHaptic();
     setState(() {
       _isLoading = true;
       _errorMessage = null;
       _successMessage = null;
+      _usePasswordAuth = false; // Ensure we're in OTP mode
     });
 
     try {
       // Better email/phone detection
       final isEmail = identifier.contains('@');
       final isPhone = RegExp(r'^\+?[\d\s\-\(\)]+$').hasMatch(identifier);
-      
-      if (!isEmail && !isPhone) {
-        setState(() {
-          _errorMessage = 'Please enter a valid email address or phone number';
-          _successMessage = null;
-        });
-        _mediumHaptic();
-        setState(() => _isLoading = false);
-        return;
-      }
       
       setState(() {
         _isPhoneAuth = isPhone;
@@ -317,6 +347,7 @@ class _SplashScreenState extends State<SplashScreen>
       if (response.statusCode == 200) {
         setState(() {
           _showOtpInput = true;
+          _showPasswordOption = false; // Hide password option once OTP is sent
           _successMessage = responseData['message'] ?? 'OTP sent successfully!';
           _errorMessage = null;
         });
@@ -342,129 +373,203 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
-  // ✅ FIXED: Now using the EXACT format from your working curl command!
-  Future<void> _verifyOtp() async {
-    final otp = _otpController.text.trim();
-    
-    if (otp.isEmpty || otp.length != 6) {
-      setState(() {
-        _errorMessage = 'Please enter a valid 6-digit code';
-        _successMessage = null;
-      });
-      _mediumHaptic();
-      return;
-    }
-
-    _lightHaptic();
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-      _successMessage = null;
-    });
-
-    try {
-      // ✅ USING THE EXACT SAME ENDPOINT AND FORMAT AS YOUR WORKING CURL
-      final endpoint = '/auth/verify-otp';
+  // ✅ UPDATED: Now supports both OTP and password authentication!
+  Future<void> _verifyCredentials() async {
+    if (_usePasswordAuth) {
+      // Password authentication
+      final password = _passwordController.text.trim();
       
-      // ✅ EXACT FORMAT FROM YOUR WORKING CURL COMMAND:
-      // {"email": "test@sobookey.in", "phone": "string", "token": "123456"}
-      final requestBody = {
-        'email': _isPhoneAuth ? null : _currentIdentifier!,
-        'phone': _isPhoneAuth ? _currentIdentifier! : null,
-        'token': otp,  // Using 'token' field like your curl command
-      };
-
-      // Remove null values to clean up the request
-      requestBody.removeWhere((key, value) => value == null);
-      
-      print('🔐 Verifying OTP for: $_currentIdentifier via $endpoint');
-      print('📦 Request body: ${json.encode(requestBody)}');
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl$endpoint'),
-        headers: {
-          'accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: json.encode(requestBody),
-      ).timeout(const Duration(seconds: 30));
-
-      print('✅ Verify Response: ${response.statusCode}');
-      print('📄 Response body: ${response.body}');
-
-      final responseData = json.decode(response.body);
-
-      if (response.statusCode == 200) {
-        // Store tokens and user data - matching your curl response format
-        final prefs = await SharedPreferences.getInstance();
-        
-        if (responseData['access_token'] != null) {
-          await prefs.setString('access_token', responseData['access_token']);
-        }
-        
-        if (responseData['refresh_token'] != null) {
-          await prefs.setString('refresh_token', responseData['refresh_token']);
-        }
-        
-        // Store additional user data from response
-        final userData = {
-          'user_id': responseData['user_id'],
-          'email': responseData['email'],
-          'phone': responseData['phone'],
-        };
-        await prefs.setString('user_data', json.encode(userData));
-        
-        // Clear guest mode flag if it was set
-        await prefs.remove('is_guest_mode');
-        
+      if (password.isEmpty) {
         setState(() {
-          _successMessage = responseData['message'] ?? 'Login successful!';
-          _errorMessage = null;
-        });
-        
-        _lightHaptic();
-        await Future.delayed(const Duration(milliseconds: 1000));
-        
-        if (mounted) {
-          // Initialize user data after successful login
-          try {
-            if (responseData['access_token'] != null) {
-              await initializeUserData(responseData['access_token']);
-            }
-          } catch (e) {
-            print('User data initialization error: $e');
-            // Don't block login for this error
-          }
-          _navigateToMainScreen();
-        }
-      } else {
-        setState(() {
-          _errorMessage = responseData['detail'] ?? responseData['message'] ?? 'Invalid verification code. Please try again.';
+          _errorMessage = 'Please enter your password';
           _successMessage = null;
         });
         _mediumHaptic();
+        return;
       }
-    } catch (e) {
+
+      _lightHaptic();
       setState(() {
-        _errorMessage = 'Network error. Please check your connection.';
+        _isLoading = true;
+        _errorMessage = null;
+        _successMessage = null;
+      });
+
+      try {
+        final endpoint = '/auth/verify-otp';
+        
+        // ✅ NEW: Password authentication via verify-otp endpoint
+        final requestBody = {
+          'email': _currentIdentifier!,
+          'password': password, // Send password instead of token
+        };
+        
+        print('🔐 Password auth for: $_currentIdentifier via $endpoint');
+        print('📦 Request body: ${json.encode(requestBody)}');
+        
+        final response = await http.post(
+          Uri.parse('$baseUrl$endpoint'),
+          headers: {
+            'accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: json.encode(requestBody),
+        ).timeout(const Duration(seconds: 30));
+
+        print('✅ Password Response: ${response.statusCode}');
+        print('📄 Response body: ${response.body}');
+
+        await _handleAuthResponse(response);
+        
+      } catch (e) {
+        setState(() {
+          _errorMessage = 'Network error. Please check your connection.';
+          _successMessage = null;
+        });
+        _mediumHaptic();
+        print('🔥 Password Error: $e');
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
+    } else {
+      // OTP authentication (existing logic)
+      final otp = _otpController.text.trim();
+      
+      if (otp.isEmpty || otp.length != 6) {
+        setState(() {
+          _errorMessage = 'Please enter a valid 6-digit code';
+          _successMessage = null;
+        });
+        _mediumHaptic();
+        return;
+      }
+
+      _lightHaptic();
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+        _successMessage = null;
+      });
+
+      try {
+        final endpoint = '/auth/verify-otp';
+        
+        // ✅ OTP verification via verify-otp endpoint
+        final requestBody = {
+          'email': _isPhoneAuth ? null : _currentIdentifier!,
+          'phone': _isPhoneAuth ? _currentIdentifier! : null,
+          'token': otp, // Send token for OTP
+        };
+
+        // Remove null values to clean up the request
+        requestBody.removeWhere((key, value) => value == null);
+        
+        print('🔐 Verifying OTP for: $_currentIdentifier via $endpoint');
+        print('📦 Request body: ${json.encode(requestBody)}');
+        
+        final response = await http.post(
+          Uri.parse('$baseUrl$endpoint'),
+          headers: {
+            'accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: json.encode(requestBody),
+        ).timeout(const Duration(seconds: 30));
+
+        print('✅ OTP Response: ${response.statusCode}');
+        print('📄 Response body: ${response.body}');
+
+        await _handleAuthResponse(response);
+        
+      } catch (e) {
+        setState(() {
+          _errorMessage = 'Network error. Please check your connection.';
+          _successMessage = null;
+        });
+        _mediumHaptic();
+        print('🔥 Verification Error: $e');
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
+    }
+  }
+
+  // ✅ NEW: Handle authentication response (common for both OTP and password)
+  Future<void> _handleAuthResponse(http.Response response) async {
+    final responseData = json.decode(response.body);
+
+    if (response.statusCode == 200) {
+      // Store tokens and user data
+      final prefs = await SharedPreferences.getInstance();
+      
+      if (responseData['access_token'] != null) {
+        await prefs.setString('access_token', responseData['access_token']);
+      }
+      
+      if (responseData['refresh_token'] != null) {
+        await prefs.setString('refresh_token', responseData['refresh_token']);
+      }
+      
+      // Store additional user data from response
+      final userData = {
+        'user_id': responseData['user_id'],
+        'email': responseData['email'],
+        'phone': responseData['phone'],
+      };
+      await prefs.setString('user_data', json.encode(userData));
+      
+      // Clear guest mode flag if it was set
+      await prefs.remove('is_guest_mode');
+      
+      setState(() {
+        _successMessage = responseData['message'] ?? 'Login successful!';
+        _errorMessage = null;
+      });
+      
+      _lightHaptic();
+      await Future.delayed(const Duration(milliseconds: 1000));
+      
+      if (mounted) {
+        // Initialize user data after successful login
+        try {
+          if (responseData['access_token'] != null) {
+            await initializeUserData(responseData['access_token']);
+          }
+        } catch (e) {
+          print('User data initialization error: $e');
+          // Don't block login for this error
+        }
+        _navigateToMainScreen();
+      }
+    } else {
+      setState(() {
+        _errorMessage = responseData['detail'] ?? responseData['message'] ?? 'Authentication failed. Please try again.';
         _successMessage = null;
       });
       _mediumHaptic();
-      print('🔥 Verification Error: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
     }
   }
 
   void _goBack() {
     setState(() {
-      _showOtpInput = false;
+      if (_showPasswordOption) {
+        // Go back to identifier input
+        _showPasswordOption = false;
+        _currentIdentifier = null;
+      } else {
+        // Go back from OTP/password to method selection
+        _showOtpInput = false;
+        _showPasswordOption = true;
+      }
       _errorMessage = null;
       _successMessage = null;
     });
     _otpController.clear();
+    _passwordController.clear();
   }
 
   @override
@@ -682,9 +787,11 @@ class _SplashScreenState extends State<SplashScreen>
         const SizedBox(height: 8),
         
         Text(
-          _showOtpInput 
-              ? 'Enter the verification code'
-              : 'Sign in to continue',
+          _showPasswordOption 
+              ? 'Choose your sign in method'
+              : _showOtpInput 
+                  ? (_usePasswordAuth ? 'Enter your password' : 'Enter the verification code')
+                  : 'Sign in to continue',
           style: const TextStyle(
             fontSize: 16,
             color: Color(0xFF64748B),
@@ -714,17 +821,18 @@ class _SplashScreenState extends State<SplashScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (!_showOtpInput) ...[
+          // ✅ Initial identifier input
+          if (!_showOtpInput && !_showPasswordOption) ...[
             _buildTextField(
               controller: _identifierController,
               hintText: 'Email or phone number',
               keyboardType: TextInputType.emailAddress,
-              onSubmitted: (_) => _sendOtp(),
+              onSubmitted: (_) => _continueWithCredentials(),
             ),
             const SizedBox(height: 20),
             _buildPrimaryButton(
               text: 'Continue',
-              onPressed: _sendOtp,
+              onPressed: _continueWithCredentials,
               isLoading: _isLoading,
             ),
             
@@ -764,19 +872,80 @@ class _SplashScreenState extends State<SplashScreen>
               ),
               textAlign: TextAlign.center,
             ),
-            
-          ] else ...[
-            _buildTextField(
-              controller: _otpController,
-              hintText: 'Enter verification code',
-              keyboardType: TextInputType.number,
-              onSubmitted: (_) => _verifyOtp(),
-              maxLength: 6,
+          ]
+          
+          // ✅ NEW: Authentication method selection (for email only)
+          else if (_showPasswordOption && !_showOtpInput) ...[
+            Text(
+              'Email: $_currentIdentifier',
+              style: const TextStyle(
+                fontSize: 14,
+                color: Color(0xFF6B7280),
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 24),
+            
+            _buildPrimaryButton(
+              text: '🔑 Sign in with Password',
+              onPressed: () => _chooseAuthMethod(true),
+              isLoading: _isLoading,
+            ),
+            
+            const SizedBox(height: 12),
+            
+            _buildSecondaryButton(
+              text: '📱 Send Verification Code',
+              onPressed: () => _chooseAuthMethod(false),
+              isLoading: _isLoading,
+            ),
+            
+            const SizedBox(height: 16),
+            _buildSecondaryButton(
+              text: 'Back',
+              onPressed: _goBack,
+            ),
+          ]
+          
+          // ✅ OTP or Password input
+          else if (_showOtpInput) ...[
+            if (_usePasswordAuth) ...[
+              // Password input
+              _buildTextField(
+                controller: _passwordController,
+                hintText: 'Enter your password',
+                keyboardType: TextInputType.visiblePassword,
+                onSubmitted: (_) => _verifyCredentials(),
+                isPassword: true,
+                obscureText: _obscurePassword,
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                    color: const Color(0xFF9CA3AF),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _obscurePassword = !_obscurePassword;
+                    });
+                  },
+                ),
+              ),
+            ] else ...[
+              // OTP input  
+              _buildTextField(
+                controller: _otpController,
+                hintText: 'Enter verification code',
+                keyboardType: TextInputType.number,
+                onSubmitted: (_) => _verifyCredentials(),
+                maxLength: 6,
+              ),
+            ],
+            
             const SizedBox(height: 20),
             _buildPrimaryButton(
-              text: 'Verify',
-              onPressed: _verifyOtp,
+              text: _usePasswordAuth ? 'Sign In' : 'Verify',
+              onPressed: _verifyCredentials,
               isLoading: _isLoading,
             ),
             const SizedBox(height: 16),
@@ -801,6 +970,9 @@ class _SplashScreenState extends State<SplashScreen>
     TextInputType? keyboardType,
     Function(String)? onSubmitted,
     int? maxLength,
+    bool isPassword = false,
+    bool obscureText = false,
+    Widget? suffixIcon,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -813,6 +985,7 @@ class _SplashScreenState extends State<SplashScreen>
         keyboardType: keyboardType,
         onSubmitted: onSubmitted,
         maxLength: maxLength,
+        obscureText: obscureText,
         style: const TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w500,
@@ -830,6 +1003,7 @@ class _SplashScreenState extends State<SplashScreen>
             vertical: 16,
           ),
           counterText: '',
+          suffixIcon: suffixIcon,
         ),
       ),
     );
@@ -955,7 +1129,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   Widget _buildFooter() {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 24, top: 16), // ✅ Added consistent padding
+      padding: const EdgeInsets.only(bottom: 24, top: 16),
       child: Column(
         children: [
           const Text(
@@ -966,7 +1140,7 @@ class _SplashScreenState extends State<SplashScreen>
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 16), // ✅ Reduced from 24 to prevent overflow
+          const SizedBox(height: 16),
           const Text(
             '© 2024 Bookey. All rights reserved.',
             style: TextStyle(
