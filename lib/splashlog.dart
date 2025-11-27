@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 import 'main.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -108,7 +109,7 @@ class _SplashScreenState extends State<SplashScreen>
       // If in guest mode, go straight to main screen
       if (isGuestMode) {
         await Future.delayed(const Duration(milliseconds: 500));
-        if (mounted) _navigateToMainScreen();
+        if (mounted) await _navigateToMainScreen();
         return;
       }
       
@@ -118,14 +119,14 @@ class _SplashScreenState extends State<SplashScreen>
         
         if (isValid) {
           await Future.delayed(const Duration(milliseconds: 500));
-          if (mounted) _navigateToMainScreen();
+          if (mounted) await _navigateToMainScreen();
           return;
         } else {
           // Try refresh
           final refreshed = await _refreshAccessToken(refreshToken);
           if (refreshed) {
             await Future.delayed(const Duration(milliseconds: 500));
-            if (mounted) _navigateToMainScreen();
+            if (mounted) await _navigateToMainScreen();
             return;
           }
         }
@@ -169,7 +170,7 @@ class _SplashScreenState extends State<SplashScreen>
       await Future.delayed(const Duration(milliseconds: 1000));
       
       if (mounted) {
-        _navigateToMainScreen();
+        await _navigateToMainScreen();
       }
     } catch (e) {
       print('Guest mode error: $e');
@@ -231,7 +232,32 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
-  void _navigateToMainScreen() {
+  Future<void> _navigateToMainScreen() async {
+    try {
+      // Get the JWT token from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token');
+      final isGuestMode = prefs.getBool('is_guest_mode') ?? false;
+      
+      // Only initialize RevenueCat for authenticated users (not guest mode)
+      if (!isGuestMode && accessToken != null) {
+        try {
+          print('🔐 Logging in to RevenueCat with user token...');
+          await Purchases.logIn(accessToken);
+          print('✅ RevenueCat user login successful');
+        } catch (e) {
+          print('⚠️ RevenueCat login error: $e');
+          // Don't block navigation for RevenueCat errors
+        }
+      } else {
+        print('👤 Guest mode or no token - skipping RevenueCat login');
+      }
+    } catch (e) {
+      print('⚠️ Error during RevenueCat initialization: $e');
+      // Don't block navigation for errors
+    }
+    
+    // Navigate to main screen
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => const MainScreen(),
@@ -543,7 +569,7 @@ class _SplashScreenState extends State<SplashScreen>
           print('User data initialization error: $e');
           // Don't block login for this error
         }
-        _navigateToMainScreen();
+        await _navigateToMainScreen();
       }
     } else {
       setState(() {

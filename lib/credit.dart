@@ -504,6 +504,7 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
   List<CreditTransaction> _transactions = [];
   bool _isLoading = true;
   bool _isPurchasing = false;
+  String? _purchasingPackageId; // Track which package is being purchased
   String? _errorMessage;
   int _selectedTabIndex = 0; // 0 = Overview, 1 = Subscriptions, 2 = Buy Credits
   bool _hasActiveSubscription = false;
@@ -682,6 +683,7 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
         // Just return silently, no error message for cancellation
         setState(() {
           _isPurchasing = false;
+          _purchasingPackageId = null; // Clear individual loading state
         });
         return;
       }
@@ -692,6 +694,7 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
     } finally {
       setState(() {
         _isPurchasing = false;
+        _purchasingPackageId = null; // Clear individual loading state
       });
     }
   }
@@ -708,6 +711,7 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
 
     setState(() {
       _isPurchasing = true;
+      _purchasingPackageId = package.revenueCatProductId; // Track which package is loading
     });
 
     try {
@@ -743,6 +747,7 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
         // Just return silently - NO error message, NO haptic feedback
         setState(() {
           _isPurchasing = false;
+          _purchasingPackageId = null; // Clear individual loading state
         });
         return;
       }
@@ -771,6 +776,7 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
       if (_isPurchasing) {
         setState(() {
           _isPurchasing = false;
+          _purchasingPackageId = null; // Clear individual loading state
         });
       }
     }
@@ -1506,7 +1512,7 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
             crossAxisCount: 2,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
-            childAspectRatio: 1.0,
+            childAspectRatio: 0.85,
           ),
           itemCount: _creditPackages.length,
           itemBuilder: (context, index) {
@@ -1571,9 +1577,10 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
           Padding(
             padding: const EdgeInsets.all(14),
             child: Column(
+              mainAxisSize: MainAxisSize.min, // Prevent overflow
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 8),
+                const SizedBox(height: 4), // Reduced from 8
                 Text(
                   package.name,
                   style: const TextStyle(
@@ -1595,7 +1602,7 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 6), // Reduced from 10
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1659,13 +1666,13 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
                     ),
                   ],
                 ),
-                const Spacer(),
+                const SizedBox(height: 4), // Minimal spacing instead of Expanded
                 SizedBox(
                   width: double.infinity,
                   height: 34,
                   child: ElevatedButton(
-                    onPressed:
-                        _isPurchasing ? null : () => _purchaseCredits(package),
+                    onPressed: (_purchasingPackageId == package.revenueCatProductId)
+                        ? null : () => _purchaseCredits(package),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: package.isPopular
                           ? const Color(0xFF2563EB)
@@ -1683,7 +1690,7 @@ class _CreditPageState extends State<CreditPage> with TickerProviderStateMixin {
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    child: _isPurchasing
+                    child: (_purchasingPackageId == package.revenueCatProductId)
                         ? const SizedBox(
                             height: 12,
                             width: 12,
